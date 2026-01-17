@@ -1,4 +1,4 @@
-use crate::{AppState, api::handlers};
+use crate::{api::handlers, AppState};
 use axum::{routing::get, Router};
 
 pub fn routes() -> Router<AppState> {
