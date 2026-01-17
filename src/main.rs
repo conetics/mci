@@ -1,7 +1,5 @@
-use axum_server::tls_rustls::RustlsConfig;
-use mci::{app, config::Config, db, AppState};
-use std::{net::SocketAddr, path::PathBuf};
-use tracing::{info, warn};
+use mci::{config::Config, serve};
+use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -12,16 +10,6 @@ async fn main() {
         .with_target(false)
         .with_env_filter(EnvFilter::new(&config.log_level))
         .init();
-
-    let db_pool = db::create_pool(&config.database_url);
-
-    db::init_db(&db_pool).await.unwrap();
-
-    let app = app(AppState { db_pool });
-    let addr: SocketAddr = config
-        .address
-        .parse()
-        .expect("Invalid address format in MCI_ADDRESS");
 
     let handle = axum_server::Handle::new();
     let shutdown_handle = handle.clone();
@@ -36,27 +24,7 @@ async fn main() {
         shutdown_handle.graceful_shutdown(Some(std::time::Duration::from_secs(30)));
     });
 
-    if let (Some(cert_path), Some(key_path)) = (config.cert_path, config.key_path) {
-        let tls_config =
-            RustlsConfig::from_pem_file(PathBuf::from(&cert_path), PathBuf::from(&key_path))
-                .await
-                .expect("Failed to load TLS certificates from provided paths");
+    let (server_future, _) = serve(&config, handle).await;
 
-        info!("Server listening on {}", addr);
-
-        axum_server::bind_rustls(addr, tls_config)
-            .handle(handle)
-            .serve(app.into_make_service())
-            .await
-            .unwrap();
-    } else {
-        warn!("TLS certificates not provided. Starting insecure HTTP server.");
-        info!("Server listening on {}", addr);
-
-        axum_server::bind(addr)
-            .handle(handle)
-            .serve(app.into_make_service())
-            .await
-            .unwrap();
-    }
+    server_future.await.expect("Server failed to run");
 }

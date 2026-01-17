@@ -5,9 +5,15 @@ use serde::Deserialize;
 pub struct Config {
     pub address: String,
     pub log_level: String,
-    pub database_url: String,
+
     pub key_path: Option<String>,
     pub cert_path: Option<String>,
+
+    pub database_url: String,
+
+    pub s3_url: String,
+    pub s3_access_key: String,
+    pub s3_secret_key: String,
 }
 
 impl Config {
@@ -15,6 +21,8 @@ impl Config {
         let s = config::Config::builder()
             .set_default("address", "0.0.0.0:7687")?
             .set_default("log_level", "info")?
+            .set_default("s3_access_key", "none")?
+            .set_default("s3_secret_key", "none")?
             .add_source(Environment::with_prefix("MCI"))
             .build()?;
         s.try_deserialize()

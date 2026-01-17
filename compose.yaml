@@ -16,7 +16,7 @@ services:
       - "9333:9333"
       - "8080:8080"
       - "8333:8333"
-    command: server -s3
+    command: "server -s3 -dir=/data"
     volumes:
       - s3_data:/data
   mci:
@@ -26,6 +26,7 @@ services:
       - "7687:7687"
     environment:
       MCI_DATABASE_URL: "postgres://postgres:postgres@db:5432/mci"
+      MCI_S3_URL: "http://s3:8333"
     volumes:
       - .:/app
       - certs:/app/certs
@@ -34,6 +35,6 @@ services:
       - s3
 
 volumes:
+  certs:
   pg_data:
   s3_data:
-  certs:
