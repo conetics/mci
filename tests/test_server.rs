@@ -6,8 +6,6 @@ use mci::{app, config::Config, db, AppState};
 use std::net::SocketAddr;
 use tokio::net::TcpStream;
 
-mod db_test_utils;
-
 async fn spawn_app() -> SocketAddr {
     let config = Config {
         address: "127.0.0.1:0".to_string(),
@@ -34,7 +32,6 @@ async fn spawn_app() -> SocketAddr {
 
 #[tokio::test]
 async fn test_http1() {
-    db_test_utils::setup_test_db().await;
     let addr = spawn_app().await;
     let stream = TokioIo::new(TcpStream::connect(addr).await.unwrap());
     let (mut sender, conn) = hyper::client::conn::http1::handshake(stream).await.unwrap();
@@ -49,12 +46,10 @@ async fn test_http1() {
     let response = sender.send_request(request).await.unwrap();
 
     assert!(response.status().is_success());
-    db_test_utils::teardown_test_db().await;
 }
 
 #[tokio::test]
 async fn test_http2() {
-    db_test_utils::setup_test_db().await;
     let addr = spawn_app().await;
     let stream = TcpStream::connect(addr).await.unwrap();
     let (mut client, h2) = h2::client::handshake(stream).await.unwrap();
@@ -74,5 +69,4 @@ async fn test_http2() {
     let response = response_future.await.unwrap();
 
     assert!(response.status().is_success());
-    db_test_utils::teardown_test_db().await;
 }
