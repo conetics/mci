@@ -1,5 +1,5 @@
 use axum_server::tls_rustls::RustlsConfig;
-use mci::{app, config::Config};
+use mci::{app, config::Config, db, AppState};
 use std::{net::SocketAddr, path::PathBuf};
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
@@ -13,11 +13,16 @@ async fn main() {
         .with_env_filter(EnvFilter::new(&config.log_level))
         .init();
 
-    let app = app();
+    let db_pool = db::create_pool(&config.database_url);
+
+    db::init_db(&db_pool).await.unwrap();
+
+    let app = app(AppState { db_pool });
     let addr: SocketAddr = config
         .address
         .parse()
         .expect("Invalid address format in MCI_ADDRESS");
+
     let handle = axum_server::Handle::new();
     let shutdown_handle = handle.clone();
 
