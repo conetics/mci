@@ -2,12 +2,23 @@ use http_body_util::Empty;
 use hyper::body::Bytes;
 use hyper::{Request, Version};
 use hyper_util::rt::tokio::TokioIo;
-use mci::app;
+use mci::{app, config::Config, db, AppState};
 use std::net::SocketAddr;
 use tokio::net::TcpStream;
 
 async fn spawn_app() -> SocketAddr {
-    let app = app();
+    let config = Config {
+        address: "127.0.0.1:0".to_string(),
+        log_level: "info".to_string(),
+        database_url: "postgres://postgres:password@localhost:5432/test".to_string(),
+        key_path: None,
+        cert_path: None,
+    };
+    let db_pool = db::create_pool(&config.database_url);
+    let app_state = AppState {
+        db_pool: db_pool.clone(),
+    };
+    let app = app(app_state);
     let addr = SocketAddr::from(([127, 0, 0, 1], 0));
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     let addr = listener.local_addr().unwrap();
