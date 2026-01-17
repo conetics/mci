@@ -41,6 +41,12 @@
               rustPackages.clippy
             ];
             RUST_SRC_PATH = rustPlatform.rustLibSrc;
+            shellHook = ''
+              export MCI_LOG_LEVEL="debug"
+              export MCI_DATABASE_URL="postgres://postgres:postgres@localhost:5432/mci"
+              export MCI_CERT_PATH="certs/cert.pem"
+              export MCI_KEY_PATH="certs/key.pem"
+            '';
           };
       }
     );
