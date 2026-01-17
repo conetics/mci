@@ -30,8 +30,21 @@ async fn spawn_app() -> SocketAddr {
     addr
 }
 
+async fn generate_certs_for_test() {
+    let output = std::process::Command::new("bash")
+        .arg("./scripts/generate_certs.sh")
+        .output()
+        .expect("Failed to execute script/generate_certs.sh");
+
+    if !output.status.success() {
+        eprintln!("Error generating certs: {:?}", output);
+        panic!("Failed to generate certificates");
+    }
+}
+
 #[tokio::test]
 async fn test_http1() {
+    generate_certs_for_test().await;
     let addr = spawn_app().await;
     let stream = TokioIo::new(TcpStream::connect(addr).await.unwrap());
     let (mut sender, conn) = hyper::client::conn::http1::handshake(stream).await.unwrap();
@@ -50,6 +63,7 @@ async fn test_http1() {
 
 #[tokio::test]
 async fn test_http2() {
+    generate_certs_for_test().await;
     let addr = spawn_app().await;
     let stream = TcpStream::connect(addr).await.unwrap();
     let (mut client, h2) = h2::client::handshake(stream).await.unwrap();
