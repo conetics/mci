@@ -70,10 +70,10 @@ pub async fn serve(
             let tls_config =
                 RustlsConfig::from_pem_file(PathBuf::from(cert_path), PathBuf::from(key_path))
                     .await
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                    .map_err(std::io::Error::other)?;
 
             axum_server::from_tcp_rustls(std_listener, tls_config)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+                .map_err(std::io::Error::other)?
                 .handle(handle)
                 .serve(app.into_make_service())
                 .await
@@ -82,7 +82,7 @@ pub async fn serve(
             info!("Starting HTTP server on {}", actual_addr);
 
             axum_server::from_tcp(std_listener)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+                .map_err(std::io::Error::other)?
                 .handle(handle)
                 .serve(app.into_make_service())
                 .await
