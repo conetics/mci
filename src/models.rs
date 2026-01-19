@@ -1,6 +1,7 @@
 use diesel::prelude::*;
-use crate::schema::specs;
+use crate::{schema::specs, utils::regex::{NAMESPACE_ID_REGEX, TYPE_IDENTIFIER_REGEX}};
 use serde::{Deserialize, Serialize};
+use validator::Validate;
 
 #[derive(Queryable, Selectable, Serialize)]
 #[diesel(table_name = specs)]
@@ -14,20 +15,33 @@ pub struct Spec {
     pub description: String,
 }
 
-#[derive(Insertable, Deserialize)]
+#[derive(Insertable, Deserialize, Validate, Debug)]
 #[diesel(table_name = specs)]
 pub struct NewSpec {
+    #[validate(length(min = 3), regex(path = *NAMESPACE_ID_REGEX))]
     pub id: String,
+
+    #[validate(url)]
     pub spec_url: String,
+
+    #[validate(length(min = 3), regex(path = *TYPE_IDENTIFIER_REGEX))]
     pub spec_type: String,
+
+    #[validate(url)]
     pub source_url: String,
+
+    #[validate(length(max = 500))]
     pub description: String,
 }
 
-#[derive(AsChangeset, Deserialize)]
+#[derive(AsChangeset, Deserialize, Validate, Debug)]
 #[diesel(table_name = specs)]
 pub struct UpdateSpec {
     pub enabled: Option<bool>,
+
+    #[validate(length(min = 3), regex(path = *TYPE_IDENTIFIER_REGEX))]
     pub spec_type: Option<String>,
+
+    #[validate(length(max = 500))]
     pub description: Option<String>,
 }
