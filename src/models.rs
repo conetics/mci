@@ -1,5 +1,8 @@
+use crate::{
+    schema::specs,
+    utils::regex::{NAMESPACE_ID_REGEX, TYPE_IDENTIFIER_REGEX},
+};
 use diesel::prelude::*;
-use crate::{schema::specs, utils::regex::{NAMESPACE_ID_REGEX, TYPE_IDENTIFIER_REGEX}};
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
