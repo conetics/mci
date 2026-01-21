@@ -1,15 +1,13 @@
 name: CI
-
 on:
   push:
     branches:
       - main
-      - develop
+      - dev
   pull_request:
     branches:
       - main
-      - develop
-
+      - dev
 env:
   CARGO_TERM_COLOR: always
 
@@ -17,6 +15,21 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: mci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Checkout code
@@ -28,16 +41,23 @@ jobs:
           toolchain: stable
           components: rustfmt, clippy
 
-      - name: Start database
-        run: docker compose -f compose.yaml up -d db
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Wait for database to be ready
-        run: |
-          for i in $(seq 1 10); do
-            docker exec db pg_isready -U postgres -d mci && break
-            echo "Waiting for database... ($i/10)"
-            sleep 5
-          done
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run tests
         env:
@@ -45,7 +65,7 @@ jobs:
         run: cargo test --workspace --verbose
 
       - name: Run clippy
-        run: cargo clippy --workspace --verbose -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
       - name: Run rustfmt
         run: cargo fmt --all -- --check
