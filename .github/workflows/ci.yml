@@ -28,7 +28,20 @@ jobs:
           toolchain: stable
           components: rustfmt, clippy
 
+      - name: Start database
+        run: docker compose -f compose.yaml up -d db
+
+      - name: Wait for database to be ready
+        run: |
+          for i in $(seq 1 10); do
+            docker exec db pg_isready -U postgres -d mci && break
+            echo "Waiting for database... ($i/10)"
+            sleep 5
+          done
+
       - name: Run tests
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/mci
         run: cargo test --workspace --verbose
 
       - name: Run clippy
