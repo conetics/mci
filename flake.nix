@@ -8,8 +8,8 @@
     {
       self,
       nixpkgs,
-      rust-overlay,
       flake-utils,
+      rust-overlay,
     }:
     flake-utils.lib.eachDefaultSystem (
       system:

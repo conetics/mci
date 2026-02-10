@@ -1,7 +1,7 @@
 use crate::{
     errors::AppError,
-    models::{NewSpec, Spec, UpdateSpec},
-    services::specs::{self as service, SpecFilter},
+    models::{Definition, UpdateDefinition},
+    services::definitions::{self as service, DefinitionFilter},
     AppState,
 };
 use axum::{
@@ -11,61 +11,63 @@ use axum::{
 };
 use validator::Validate;
 
-pub async fn get_spec(
+pub async fn get_definition(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<Json<Spec>, AppError> {
+) -> Result<Json<Definition>, AppError> {
     let mut conn = state.db_pool.get()?;
-    let spec = tokio::task::spawn_blocking(move || service::get_spec(&mut conn, &id)).await??;
+    let definition =
+        tokio::task::spawn_blocking(move || service::get_definition(&mut conn, &id)).await??;
 
-    Ok(Json(spec))
+    Ok(Json(definition))
 }
 
-pub async fn list_specs(
+pub async fn list_definitions(
     State(state): State<AppState>,
-    Query(filter): Query<SpecFilter>,
-) -> Result<Json<Vec<Spec>>, AppError> {
+    Query(filter): Query<DefinitionFilter>,
+) -> Result<Json<Vec<Definition>>, AppError> {
     let mut conn = state.db_pool.get()?;
-    let specs =
-        tokio::task::spawn_blocking(move || service::list_specs(&mut conn, filter)).await??;
+    let definitions =
+        tokio::task::spawn_blocking(move || service::list_definitions(&mut conn, filter)).await??;
 
-    Ok(Json(specs))
+    Ok(Json(definitions))
 }
 
-// pub async fn create_spec(
+// pub async fn create_definition(
 //     State(state): State<AppState>,
-//     Json(new_spec): Json<NewSpec>,
-// ) -> Result<(StatusCode, Json<Spec>), AppError> {
-//     new_spec.validate()?;
+//     Json(new_definition): Json<NewDefinition>,
+// ) -> Result<(StatusCode, Json<Definition>), AppError> {
+//     new_definition.validate()?;
 //
 //     let mut conn = state.db_pool.get()?;
-//     let spec =
-//         tokio::task::spawn_blocking(move || service::create_spec(&mut conn, new_spec)).await??;
+//     let definition =
+//         tokio::task::spawn_blocking(move || service::create_definition(&mut conn, new_definition)).await??;
 //
-//     Ok((StatusCode::CREATED, Json(spec)))
+//     Ok((StatusCode::CREATED, Json(definition)))
 // }
 
-pub async fn update_spec(
+pub async fn update_definition(
     State(state): State<AppState>,
     Path(id): Path<String>,
-    Json(update): Json<UpdateSpec>,
-) -> Result<Json<Spec>, AppError> {
+    Json(update): Json<UpdateDefinition>,
+) -> Result<Json<Definition>, AppError> {
     update.validate()?;
 
     let mut conn = state.db_pool.get()?;
-    let spec =
-        tokio::task::spawn_blocking(move || service::update_spec(&mut conn, &id, update)).await??;
+    let definition =
+        tokio::task::spawn_blocking(move || service::update_definition(&mut conn, &id, update))
+            .await??;
 
-    Ok(Json(spec))
+    Ok(Json(definition))
 }
 
-pub async fn delete_spec(
+pub async fn delete_definition(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
     let mut conn = state.db_pool.get()?;
 
-    tokio::task::spawn_blocking(move || service::delete_spec(&mut conn, &id)).await??;
+    tokio::task::spawn_blocking(move || service::delete_definition(&mut conn, &id)).await??;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -117,12 +119,12 @@ mod tests {
     }
 
     // #[tokio::test]
-    // async fn test_create_spec_success() {
+    // async fn test_create_definition_success() {
     //     let app = setup_test_app().await;
-    //     let new_spec = json!({
-    //         "id": "test-spec",
-    //         "spec_url": "https://example.com/spec",
-    //         "spec_type": "openapi",
+    //     let new_definition = json!({
+    //         "id": "test-definition",
+    //         "definition_url": "https://example.com/definition",
+    //         "definition_type": "openapi",
     //         "source_url": "https://example.com",
     //         "description": "Test"
     //     });
@@ -130,9 +132,9 @@ mod tests {
     //         .oneshot(
     //             Request::builder()
     //                 .method("POST")
-    //                 .uri("/specs")
+    //                 .uri("/definitions")
     //                 .header("content-type", "application/json")
-    //                 .body(Body::from(serde_json::to_string(&new_spec).unwrap()))
+    //                 .body(Body::from(serde_json::to_string(&new_definition).unwrap()))
     //                 .unwrap(),
     //         )
     //         .await
@@ -142,12 +144,12 @@ mod tests {
     // }
     //
     // #[tokio::test]
-    // async fn test_create_spec_validation_error() {
+    // async fn test_create_definition_validation_error() {
     //     let app = setup_test_app().await;
-    //     let invalid_spec = json!({
+    //     let invalid_definition = json!({
     //         "id": "a",
-    //         "spec_url": "not-a-url",
-    //         "spec_type": "openapi",
+    //         "definition_url": "not-a-url",
+    //         "definition_type": "openapi",
     //         "source_url": "https://example.com",
     //         "description": "Test"
     //     });
@@ -155,9 +157,9 @@ mod tests {
     //         .oneshot(
     //             Request::builder()
     //                 .method("POST")
-    //                 .uri("/specs")
+    //                 .uri("/definitions")
     //                 .header("content-type", "application/json")
-    //                 .body(Body::from(serde_json::to_string(&invalid_spec).unwrap()))
+    //                 .body(Body::from(serde_json::to_string(&invalid_definition).unwrap()))
     //                 .unwrap(),
     //         )
     //         .await
@@ -167,12 +169,12 @@ mod tests {
     // }
 
     #[tokio::test]
-    async fn test_get_spec_not_found() {
+    async fn test_get_definition_not_found() {
         let app = setup_test_app().await;
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri("/specs/nonexistent")
+                    .uri("/definitions/nonexistent")
                     .body(Body::empty())
                     .unwrap(),
             )

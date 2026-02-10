@@ -1,1 +1,1 @@
-pub mod specs;
+pub mod definitions;
