@@ -15,3 +15,73 @@ pub async fn stream_content_from_url(
 pub async fn stream_content_from_path(path: &str) -> Result<ByteStream> {
     Ok(ByteStream::from_path(Path::new(path)).await?)
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(test)]
+    mod http_tests {
+        use super::*;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        #[tokio::test]
+        async fn test_stream_url_success() {
+            let client = reqwest::Client::new();
+            let server = MockServer::start().await;
+
+            Mock::given(method("GET"))
+                .and(path("/hello"))
+                .respond_with(ResponseTemplate::new(200).set_body_string("content"))
+                .mount(&server)
+                .await;
+
+            let res = stream_content_from_url(&client, &format!("{}/hello", &server.uri())).await;
+
+            assert!(res.is_ok());
+            assert_eq!(res.unwrap().text().await.unwrap(), "content");
+        }
+
+        #[tokio::test]
+        async fn test_stream_url_404_error() {
+            let client = reqwest::Client::new();
+            let server = MockServer::start().await;
+
+            Mock::given(method("GET"))
+                .respond_with(ResponseTemplate::new(404))
+                .mount(&server)
+                .await;
+
+            let res = stream_content_from_url(&client, &server.uri()).await;
+            assert!(res.is_err());
+        }
+    }
+
+    #[cfg(test)]
+    mod file_tests {
+        use super::*;
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
+        #[tokio::test]
+        async fn test_stream_path_success() {
+            let mut file = NamedTempFile::new().unwrap();
+            writeln!(file, "file content").unwrap();
+
+            let path = file.path().to_str().unwrap();
+            let stream = stream_content_from_path(path).await;
+            assert!(stream.is_ok());
+
+            let data = stream.unwrap().collect().await.unwrap().to_vec();
+            assert_eq!(data, b"file content\n");
+        }
+
+        #[tokio::test]
+        async fn test_stream_path_missing_file() {
+            let res = stream_content_from_path("/non/existent/path/to/file.txt").await;
+            assert!(res.is_err());
+        }
+    }
+}
