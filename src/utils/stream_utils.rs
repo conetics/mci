@@ -16,7 +16,6 @@ pub async fn stream_content_from_path(path: &str) -> Result<ByteStream> {
     Ok(ByteStream::from_path(Path::new(path)).await?)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
