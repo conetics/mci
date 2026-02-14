@@ -28,7 +28,7 @@ services:
 
   migrations:
     build: .
-    container_name: mci_migrations
+    container_name: migrations
     command: diesel migration run
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-mci}

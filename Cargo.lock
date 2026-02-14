@@ -2032,6 +2032,7 @@ dependencies = [
  "axum",
  "axum-macros",
  "axum-server",
+ "bytes",
  "config",
  "deadpool-diesel",
  "diesel",
@@ -2043,6 +2044,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "thiserror",
  "tokio",
@@ -2051,6 +2053,7 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
+ "url",
  "validator",
  "wiremock",
 ]
