@@ -1,8 +1,6 @@
-use aws_sdk_s3;
 use axum::Router;
 use axum_server::{tls_rustls::RustlsConfig, Handle};
 use futures::Future;
-use reqwest;
 use std::{net::SocketAddr, path::PathBuf};
 use tower_http::trace::TraceLayer;
 use tracing::{info, warn};
