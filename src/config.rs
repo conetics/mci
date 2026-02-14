@@ -19,7 +19,9 @@ impl Config {
         Self::from_builder(config::Config::builder())
     }
 
-    fn from_builder(builder: config::ConfigBuilder<config::builder::DefaultState>) -> Result<Self, ConfigError> {
+    fn from_builder(
+        builder: config::ConfigBuilder<config::builder::DefaultState>,
+    ) -> Result<Self, ConfigError> {
         let s = builder
             .set_default("log_level", "info")?
             .set_default("address", "0.0.0.0:7687")?
@@ -40,7 +42,8 @@ mod tests {
 
     pub trait ConfigTestExt {
         fn from_map(values: HashMap<&str, &str>) -> Result<Self, ConfigError>
-        where Self: Sized;
+        where
+            Self: Sized;
     }
 
     impl ConfigTestExt for Config {
@@ -118,8 +121,14 @@ mod tests {
         map.insert("log_level", "warn");
         map.insert("address", "0.0.0.0:443");
         map.insert("key_path", "/etc/letsencrypt/live/example.com/privkey.pem");
-        map.insert("cert_path", "/etc/letsencrypt/live/example.com/fullchain.pem");
-        map.insert("database_url", "postgres://user:password@db.example.com:5432/production");
+        map.insert(
+            "cert_path",
+            "/etc/letsencrypt/live/example.com/fullchain.pem",
+        );
+        map.insert(
+            "database_url",
+            "postgres://user:password@db.example.com:5432/production",
+        );
         map.insert("s3_url", "https://s3.us-west-2.amazonaws.com");
         map.insert("s3_region", "us-west-2");
         map.insert("s3_access_key", "AKIAIOSFODNN7EXAMPLE");
@@ -129,13 +138,25 @@ mod tests {
 
         assert_eq!(config.log_level, "warn");
         assert_eq!(config.address, "0.0.0.0:443");
-        assert_eq!(config.key_path, Some("/etc/letsencrypt/live/example.com/privkey.pem".to_string()));
-        assert_eq!(config.cert_path, Some("/etc/letsencrypt/live/example.com/fullchain.pem".to_string()));
-        assert_eq!(config.database_url, "postgres://user:password@db.example.com:5432/production");
+        assert_eq!(
+            config.key_path,
+            Some("/etc/letsencrypt/live/example.com/privkey.pem".to_string())
+        );
+        assert_eq!(
+            config.cert_path,
+            Some("/etc/letsencrypt/live/example.com/fullchain.pem".to_string())
+        );
+        assert_eq!(
+            config.database_url,
+            "postgres://user:password@db.example.com:5432/production"
+        );
         assert_eq!(config.s3_url, "https://s3.us-west-2.amazonaws.com");
         assert_eq!(config.s3_region, "us-west-2");
         assert_eq!(config.s3_access_key, "AKIAIOSFODNN7EXAMPLE");
-        assert_eq!(config.s3_secret_key, "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY");
+        assert_eq!(
+            config.s3_secret_key,
+            "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+        );
     }
 
     #[test]
@@ -176,9 +197,18 @@ mod tests {
         map2.insert("s3_url", "http://localhost:9000");
         map1.insert("database_url", "postgres://localhost/test");
 
-        assert!(Config::from_map(map1).is_err(), "Expected error when s3_url is missing");
-        assert!(Config::from_map(map2).is_err(), "Expected error when database_url is missing");
-        assert!(Config::from_map(HashMap::new()).is_err(), "Expected error when all required fields are missing");
+        assert!(
+            Config::from_map(map1).is_err(),
+            "Expected error when s3_url is missing"
+        );
+        assert!(
+            Config::from_map(map2).is_err(),
+            "Expected error when database_url is missing"
+        );
+        assert!(
+            Config::from_map(HashMap::new()).is_err(),
+            "Expected error when all required fields are missing"
+        );
     }
 
     #[test]
@@ -221,7 +251,10 @@ mod tests {
 
         let config = Config::from_map(map).expect("Failed to load config");
 
-        assert_eq!(config.database_url, "postgres://user:p@ss!w0rd@host:5432/db");
+        assert_eq!(
+            config.database_url,
+            "postgres://user:p@ss!w0rd@host:5432/db"
+        );
     }
 
     #[test]
