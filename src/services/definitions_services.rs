@@ -2,7 +2,7 @@ use crate::{
     db::DbConnection,
     models::{Definition, NewDefinition, UpdateDefinition},
     schema::definitions,
-    utils::stream_utils,
+    utils::{stream_utils, source_utils},
 };
 use anyhow::{Context, Result};
 use aws_sdk_s3;
@@ -53,30 +53,13 @@ pub struct DefinitionPayload {
     pub source_url: Option<String>,
 }
 
-#[derive(Debug, Clone)]
-pub enum DefinitionSource {
-    Http(String),
-    File(String),
-}
-
-impl DefinitionSource {
-    pub fn parse(input: &str) -> Self {
-        match Url::parse(input) {
-            Ok(url) if url.scheme() == "http" || url.scheme() == "https" => {
-                Self::Http(input.to_string())
-            }
-            Ok(url) if url.scheme() == "file" => Self::File(input.to_string()),
-            _ => Self::File(input.to_string()),
-        }
-    }
-}
-
 async fn fetch_definition_from_path(path: &str) -> Result<DefinitionPayload> {
-    let resolved_path = if let Ok(url) = Url::parse(path) {
-        url.to_file_path()
-            .map_err(|()| anyhow::anyhow!("Invalid file URL: {}", path))?
-    } else {
-        Path::new(path).to_path_buf()
+    let resolved_path = match Url::parse(path) {
+        Ok(url) => {
+            url.to_file_path()
+                .map_err(|()| anyhow::anyhow!("Cannot convert file URL to path: {}", path))?
+        },
+        Err(_) => Path::new(path).to_path_buf(),
     };
 
     if !resolved_path.is_file() {
@@ -254,11 +237,11 @@ pub async fn create_definition(
         );
     }
 
-    let definition_url = DefinitionSource::parse(&payload.file_url);
+    let definition_url = source_utils::DefinitionSource::parse(&payload.file_url)?;
     let obj_key = payload.id.clone();
 
     let body = match &definition_url {
-        DefinitionSource::Http(url) => {
+        source_utils::DefinitionSource::Http(url) => {
             let response = stream_utils::stream_content_from_url(http_client, url)
                 .await
                 .context("Failed to fetch definition file from URL")?;
@@ -268,7 +251,7 @@ pub async fn create_definition(
             let body = StreamBody::new(frames);
             ByteStream::from_body_1_x(body)
         }
-        DefinitionSource::File(path) => stream_utils::stream_content_from_path(path)
+        source_utils::DefinitionSource::File(path) => stream_utils::stream_content_from_path(path)
             .await
             .context("Failed to read definition file from path")?,
     };
@@ -298,12 +281,12 @@ pub async fn create_definition_from_registry(
     s3_client: &aws_sdk_s3::Client,
     source_input: &str,
 ) -> Result<Definition> {
-    let source_url = DefinitionSource::parse(source_input);
+    let source_url = source_utils::DefinitionSource::parse(source_input)?;
     let mut payload = match &source_url {
-        DefinitionSource::Http(url) => fetch_definition_from_url(http_client, url)
+        source_utils::DefinitionSource::Http(url) => fetch_definition_from_url(http_client, url)
             .await
             .context("Failed to fetch definition metadata from registry")?,
-        DefinitionSource::File(path) => fetch_definition_from_path(path)
+        source_utils::DefinitionSource::File(path) => fetch_definition_from_path(path)
             .await
             .context("Failed to read definition metadata from file")?,
     };
@@ -327,12 +310,12 @@ pub async fn update_definition_from_source(
         .source_url
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("Definition does not have a source_url to update from"))?;
-    let source = DefinitionSource::parse(source_url_str);
+    let source = source_utils::DefinitionSource::parse(source_url_str)?;
     let remote_payload = match &source {
-        DefinitionSource::Http(url) => fetch_definition_from_url(http_client, url)
+        source_utils::DefinitionSource::Http(url) => fetch_definition_from_url(http_client, url)
             .await
             .context("Failed to fetch updated definition metadata from registry")?,
-        DefinitionSource::File(path) => fetch_definition_from_path(path)
+        source_utils::DefinitionSource::File(path) => fetch_definition_from_path(path)
             .await
             .context("Failed to read updated definition metadata from file")?,
     };
@@ -341,10 +324,10 @@ pub async fn update_definition_from_source(
         return Ok(definition);
     }
 
-    let definition_file_source = DefinitionSource::parse(&remote_payload.file_url);
+    let definition_file_source = source_utils::DefinitionSource::parse(&remote_payload.file_url)?;
     let obj_key = definition.id.clone();
     let body = match &definition_file_source {
-        DefinitionSource::Http(url) => {
+        source_utils::DefinitionSource::Http(url) => {
             let response = stream_utils::stream_content_from_url(http_client, url)
                 .await
                 .context("Failed to fetch updated definition file from URL")?;
@@ -354,7 +337,7 @@ pub async fn update_definition_from_source(
 
             ByteStream::from_body_1_x(body)
         }
-        DefinitionSource::File(path) => stream_utils::stream_content_from_path(path)
+        source_utils::DefinitionSource::File(path) => stream_utils::stream_content_from_path(path)
             .await
             .context("Failed to read updated definition file from path")?,
     };
@@ -373,4 +356,275 @@ pub async fn update_definition_from_source(
 
     db_update_definition(conn, definition_id, &update_data)
         .context("Failed to update definition in database")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::write;
+    use tempfile::TempDir;
+    use wiremock::{ matchers::{method, path, header}, MockServer, Mock, ResponseTemplate};
+
+    #[cfg(test)]
+    mod test_fetch_definition_from_path {
+        use super::*;
+
+        fn create_valid_payload() -> DefinitionPayload {
+            DefinitionPayload {
+                r#type: "test-type".to_string(),
+                description: "test description".to_string(),
+                file_url: "".to_string(),
+                digest: "sha256:abc123".to_string(),
+                source_url: None,
+                id: "test-id".to_string(),
+                name: "Test Definition".to_string(),
+            }
+        }
+
+        #[tokio::test]
+        async fn test_fetch_definition_from_absolute_path() {
+            let temp_dir = TempDir::new().unwrap();
+            let file_path = temp_dir.path().join("definition.json");
+            let valid_payload = create_valid_payload();
+
+            write(&file_path, serde_json::to_string(&valid_payload).unwrap()).unwrap();
+
+            let result = fetch_definition_from_path(file_path.to_str().unwrap()).await;
+            assert!(result.is_ok());
+
+            let loaded = result.unwrap();
+            assert_eq!(loaded.id, "test-id");
+            assert_eq!(loaded.name, "Test Definition");
+        }
+
+        #[tokio::test]
+        async fn test_fetch_definition_from_file_url() {
+            let temp_dir = TempDir::new().unwrap();
+            let file_path = temp_dir.path().join("definition.json");
+            let valid_payload = create_valid_payload();
+
+            write(&file_path, serde_json::to_string(&valid_payload).unwrap()).unwrap();
+
+            let file_url = Url::from_file_path(&file_path).unwrap();
+
+            let result = fetch_definition_from_path(file_url.as_str()).await;
+            assert!(result.is_ok());
+
+            let loaded = result.unwrap();
+            assert_eq!(loaded.id, "test-id");
+        }
+
+        #[tokio::test]
+        async fn test_fetch_definition_from_relative_path() {
+            let temp_dir = TempDir::new().unwrap();
+            let file_path = temp_dir.path().join("definition.json");
+            let valid_payload = create_valid_payload();
+
+            write(&file_path, serde_json::to_string(&valid_payload).unwrap()).unwrap();
+
+            std::env::set_current_dir(&temp_dir).unwrap();
+
+            let result = fetch_definition_from_path("./definition.json").await;
+            assert!(result.is_ok());
+        }
+
+        #[tokio::test]
+        async fn test_fetch_definition_file_not_found() {
+            let result = fetch_definition_from_path("/nonexistent/path/definition.json").await;
+            assert!(result.is_err());
+            assert!(result.unwrap_err().to_string().contains("not a file"));
+        }
+
+        #[tokio::test]
+        async fn test_fetch_definition_invalid_json() {
+            let temp_dir = TempDir::new().unwrap();
+            let file_path = temp_dir.path().join("invalid.json");
+
+            write(&file_path, "not valid json {").unwrap();
+
+            let result = fetch_definition_from_path(file_path.to_str().unwrap()).await;
+            assert!(result.is_err());
+            assert!(result.unwrap_err().to_string().contains("Failed to parse definition JSON"));
+        }
+
+        #[tokio::test]
+        async fn test_fetch_definition_path_is_directory() {
+            let temp_dir = TempDir::new().unwrap();
+
+            let result = fetch_definition_from_path(temp_dir.path().to_str().unwrap()).await;
+            assert!(result.is_err());
+            assert!(result.unwrap_err().to_string().contains("not a file"));
+        }
+
+        #[tokio::test]
+        async fn test_fetch_definition_invalid_file_url() {
+            let result = fetch_definition_from_path("file://invalid//path").await;
+            assert!(result.is_err());
+        }
+
+        #[tokio::test]
+        async fn test_fetch_definition_empty_file() {
+            let temp_dir = TempDir::new().unwrap();
+            let file_path = temp_dir.path().join("empty.json");
+
+            write(&file_path, "").unwrap();
+
+            let result = fetch_definition_from_path(file_path.to_str().unwrap()).await;
+            assert!(result.is_err());
+            assert!(result.unwrap_err().to_string().contains("Failed to parse definition JSON"));
+        }
+    }
+
+    #[cfg(test)]
+    mod test_fetch_definition_from_url {
+        use super::*;
+
+        fn create_valid_payload() -> DefinitionPayload {
+            DefinitionPayload {
+                r#type: "test-type".to_string(),
+                description: "test description".to_string(),
+                file_url: "".to_string(),
+                digest: "sha256:abc123".to_string(),
+                source_url: None,
+                id: "test-id".to_string(),
+                name: "Test Definition".to_string(),
+            }
+        }
+
+        #[tokio::test]
+        async fn test_fetch_definition_from_url_success() {
+            let mock_server = MockServer::start().await;
+            let payload = create_valid_payload();
+
+            Mock::given(method("GET"))
+                .and(path("/definition.json"))
+                .and(header("User-Agent", "MCI/1.0"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(&payload))
+                .mount(&mock_server)
+                .await;
+
+            let client = reqwest::Client::new();
+            let url = format!("{}/definition.json", mock_server.uri());
+
+            let result = fetch_definition_from_url(&client, &url).await;
+            assert!(result.is_ok());
+
+            let loaded = result.unwrap();
+            assert_eq!(loaded.id, "test-id");
+            assert_eq!(loaded.name, "Test Definition");
+        }
+
+        #[tokio::test]
+        async fn test_fetch_definition_from_url_404() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("GET"))
+                .and(path("/notfound.json"))
+                .respond_with(ResponseTemplate::new(404))
+                .mount(&mock_server)
+                .await;
+
+            let client = reqwest::Client::new();
+            let url = format!("{}/notfound.json", mock_server.uri());
+
+            let result = fetch_definition_from_url(&client, &url).await;
+            assert!(result.is_err());
+            assert!(result.unwrap_err().to_string().contains("error status"));
+        }
+
+        #[tokio::test]
+        async fn test_fetch_definition_from_url_500() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("GET"))
+                .and(path("/error.json"))
+                .respond_with(ResponseTemplate::new(500))
+                .mount(&mock_server)
+                .await;
+
+            let client = reqwest::Client::new();
+            let url = format!("{}/error.json", mock_server.uri());
+
+            let result = fetch_definition_from_url(&client, &url).await;
+            assert!(result.is_err());
+            assert!(result.unwrap_err().to_string().contains("error status"));
+        }
+
+        #[tokio::test]
+        async fn test_fetch_definition_from_url_invalid_json() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("GET"))
+                .and(path("/invalid.json"))
+                .respond_with(ResponseTemplate::new(200).set_body_string("not valid json {"))
+                .mount(&mock_server)
+                .await;
+
+            let client = reqwest::Client::new();
+            let url = format!("{}/invalid.json", mock_server.uri());
+
+            let result = fetch_definition_from_url(&client, &url).await;
+            assert!(result.is_err());
+            assert!(result.unwrap_err().to_string().contains("Failed to parse definition JSON"));
+        }
+
+        #[tokio::test]
+        async fn test_fetch_definition_from_url_invalid_url() {
+            let client = reqwest::Client::new();
+
+            let result = fetch_definition_from_url(&client, "not-a-valid-url").await;
+            assert!(result.is_err());
+            assert!(result.unwrap_err().to_string().contains("Failed to send HTTP request"));
+        }
+
+        #[tokio::test]
+        async fn test_fetch_definition_from_url_connection_refused() {
+            let client = reqwest::Client::new();
+
+            let result = fetch_definition_from_url(&client, "http://localhost:59999/definition.json").await;
+            assert!(result.is_err());
+            assert!(result.unwrap_err().to_string().contains("Failed to send HTTP request"));
+        }
+
+        #[tokio::test]
+        async fn test_fetch_definition_from_url_timeout() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("GET"))
+                .and(path("/slow.json"))
+                .respond_with(ResponseTemplate::new(200).set_delay(std::time::Duration::from_secs(10)))
+                .mount(&mock_server)
+                .await;
+
+            let client = reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(1))
+                .build()
+                .unwrap();
+
+            let url = format!("{}/slow.json", mock_server.uri());
+
+            let result = fetch_definition_from_url(&client, &url).await;
+            assert!(result.is_err());
+        }
+
+        #[tokio::test]
+        async fn test_fetch_definition_from_url_has_user_agent() {
+            let mock_server = MockServer::start().await;
+            let payload = create_valid_payload();
+
+            Mock::given(method("GET"))
+                .and(path("/definition.json"))
+                .and(header("User-Agent", "MCI/1.0"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(&payload))
+                .expect(1)
+                .mount(&mock_server)
+                .await;
+
+            let client = reqwest::Client::new();
+            let url = format!("{}/definition.json", mock_server.uri());
+
+            let result = fetch_definition_from_url(&client, &url).await;
+            assert!(result.is_ok());
+        }
+    }
 }
