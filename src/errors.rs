@@ -161,3 +161,126 @@ impl AppError {
         AppError::Internal(err.into())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use http_body_util::BodyExt;
+    use validator::Validate;
+
+    #[derive(Debug, Validate)]
+    struct TestStruct {
+        #[validate(length(min = 3))]
+        name: String,
+        #[validate(range(min = 18))]
+        age: i32,
+    }
+
+    #[test]
+    fn test_format_validation_errors_with_custom_messages() {
+        let test = TestStruct {
+            name: "ab".to_string(),
+            age: 15,
+        };
+        let errors = test.validate().unwrap_err();
+        let formatted = format_validation_errors(&errors);
+
+        assert!(formatted.contains("name") || formatted.contains("age"));
+    }
+
+    #[tokio::test]
+    async fn test_app_error_not_found_response() {
+        let error = AppError::not_found("User not found");
+        let response = error.into_response();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+        let body = response.into_body();
+        let bytes = body.collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+
+        assert_eq!(json["error"]["type"], "not_found");
+        assert_eq!(json["error"]["message"], "User not found");
+    }
+
+    #[tokio::test]
+    async fn test_app_error_bad_request_response() {
+        let error = AppError::bad_request("Invalid input");
+        let response = error.into_response();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let body = response.into_body();
+        let bytes = body.collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+
+        assert_eq!(json["error"]["type"], "bad_request");
+        assert_eq!(json["error"]["message"], "Invalid input");
+    }
+
+    #[tokio::test]
+    async fn test_app_error_validation_response() {
+        let test = TestStruct {
+            name: "ab".to_string(),
+            age: 15,
+        };
+        let validation_errors = test.validate().unwrap_err();
+        let error = AppError::from(validation_errors);
+        let response = error.into_response();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let body = response.into_body();
+        let bytes = body.collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+
+        assert_eq!(json["error"]["type"], "validation_error");
+        assert!(!json["error"]["message"].as_str().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_app_error_internal_hides_details() {
+        let error = AppError::internal(anyhow::anyhow!("Sensitive database password exposed"));
+        let response = error.into_response();
+
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+        let body = response.into_body();
+        let bytes = body.collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+
+        assert_eq!(json["error"]["type"], "internal_error");
+        assert_eq!(json["error"]["message"], "An internal error occurred");
+        assert!(!json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("password"));
+    }
+
+    #[test]
+    fn test_diesel_not_found_converts_to_app_error_not_found() {
+        let diesel_error = diesel::result::Error::NotFound;
+        let app_error = AppError::from(diesel_error);
+
+        match app_error {
+            AppError::NotFound(msg) => {
+                assert_eq!(msg, "Resource not found");
+            }
+            _ => panic!("Expected NotFound variant"),
+        }
+    }
+
+    #[test]
+    fn test_diesel_other_error_converts_to_database_error() {
+        let diesel_error = diesel::result::Error::DatabaseError(
+            diesel::result::DatabaseErrorKind::UniqueViolation,
+            Box::new("test".to_string()),
+        );
+        let app_error = AppError::from(diesel_error);
+
+        match app_error {
+            AppError::Database(_) => {}
+            _ => panic!("Expected Database variant"),
+        }
+    }
+}
