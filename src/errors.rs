@@ -14,6 +14,9 @@ pub enum AppError {
     BadRequest(String),
     Validation(ValidationErrors),
 
+    UnsupportedScheme(String),
+    InvalidDefinitionSource(String),
+
     Internal(anyhow::Error),
     Pool(diesel::r2d2::PoolError),
     Database(diesel::result::Error),
@@ -27,6 +30,9 @@ impl fmt::Display for AppError {
             AppError::NotFound(msg) => write!(f, "Not found: {}", msg),
             AppError::BadRequest(msg) => write!(f, "Bad request: {}", msg),
             AppError::Validation(err) => write!(f, "Validation error: {}", err),
+
+            AppError::UnsupportedScheme(scheme) => write!(f, "Unsupported scheme: '{}'", scheme),
+            AppError::InvalidDefinitionSource(msg) => write!(f, "Invalid definition source: {}", msg),
 
             AppError::Internal(err) => write!(f, "Internal error: {}", err),
             AppError::Database(err) => write!(f, "Database error: {}", err),
@@ -82,6 +88,15 @@ impl IntoResponse for AppError {
                 "validation_error",
                 format_validation_errors(errors),
             ),
+
+            AppError::InvalidDefinitionSource(msg) => {
+                (StatusCode::BAD_REQUEST, "invalid_definition_source", msg.clone())
+            }
+            AppError::UnsupportedScheme(scheme) => {
+                (StatusCode::BAD_REQUEST, "unsupported_scheme",
+                 format!("Unsupported scheme: '{}'", scheme))
+            }
+
             AppError::Database(err) => {
                 tracing::error!("Database error: {:?}", err);
                 (
@@ -159,6 +174,14 @@ impl AppError {
 
     pub fn internal(err: impl Into<anyhow::Error>) -> Self {
         AppError::Internal(err.into())
+    }
+
+    pub fn invalid_definition_source(msg: impl Into<String>) -> Self {
+        AppError::InvalidDefinitionSource(msg.into())
+    }
+
+    pub fn unsupported_scheme(scheme: impl Into<String>) -> Self {
+        AppError::UnsupportedScheme(scheme.into())
     }
 }
 
@@ -282,5 +305,51 @@ mod tests {
             AppError::Database(_) => {}
             _ => panic!("Expected Database variant"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_app_error_invalid_definition_source_response() {
+        let error = AppError::invalid_definition_source("invalid://source");
+        let response = error.into_response();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let body = response.into_body();
+        let bytes = body.collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+
+        assert_eq!(json["error"]["type"], "invalid_definition_source");
+        assert!(json["error"]["message"].as_str().unwrap().contains("invalid://source"));
+    }
+
+    #[tokio::test]
+    async fn test_app_error_unsupported_scheme_response() {
+        let error = AppError::unsupported_scheme("ftp");
+        let response = error.into_response();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let body = response.into_body();
+        let bytes = body.collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+
+        assert_eq!(json["error"]["type"], "unsupported_scheme");
+        assert!(json["error"]["message"].as_str().unwrap().contains("ftp"));
+    }
+
+    #[test]
+    fn test_invalid_definition_source_display() {
+        let error = AppError::invalid_definition_source("bad-input");
+        let display = format!("{}", error);
+        assert!(display.contains("Invalid definition source"));
+        assert!(display.contains("bad-input"));
+    }
+
+    #[test]
+    fn test_unsupported_scheme_display() {
+        let error = AppError::unsupported_scheme("ftp");
+        let display = format!("{}", error);
+        assert!(display.contains("Unsupported scheme"));
+        assert!(display.contains("ftp"));
     }
 }
