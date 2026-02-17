@@ -1,4 +1,5 @@
 use crate::{
+    s3,
     db::DbConnection,
     models::{Definition, NewDefinition, UpdateDefinition},
     schema::definitions,
@@ -7,13 +8,11 @@ use crate::{
 use anyhow::{Context, Result};
 use aws_sdk_s3;
 use aws_smithy_types::byte_stream::ByteStream;
-use bytes::Bytes;
 use diesel::{associations::HasTable, prelude::*};
 use futures::stream::TryStreamExt;
 use http_body_util::StreamBody;
 use reqwest;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::path::Path;
 use tokio::fs;
 
@@ -89,53 +88,6 @@ async fn fetch_definition(
         source_utils::Source::Http(url) => fetch_definition_from_url(http_client, url).await,
         source_utils::Source::File(path) => fetch_definition_from_path(path).await,
     }
-}
-
-async fn s3_put_stream(
-    client: &aws_sdk_s3::Client,
-    key: &str,
-    body: ByteStream,
-    expected_digest: &str,
-) -> Result<()> {
-    let (algorithm, expected_hash) = expected_digest
-        .split_once(':')
-        .ok_or_else(|| anyhow::anyhow!("Invalid digest format, expected 'algorithm:hash'"))?;
-
-    let mut all_bytes = Vec::new();
-    let computed_hash = match algorithm {
-        "sha256" => {
-            let bytes = body.collect().await?.into_bytes();
-            let mut hasher = Sha256::new();
-
-            hasher.update(&bytes);
-            all_bytes.extend_from_slice(&bytes);
-
-            format!("{:x}", hasher.finalize())
-        }
-        _ => anyhow::bail!("Unsupported hash algorithm: {}", algorithm),
-    };
-
-    if computed_hash != expected_hash {
-        anyhow::bail!(
-            "Digest mismatch: expected {}, got {}:{}",
-            expected_digest,
-            algorithm,
-            computed_hash
-        );
-    }
-
-    let verified_body = ByteStream::from(Bytes::from(all_bytes));
-
-    client
-        .put_object()
-        .bucket("definitions")
-        .key(key)
-        .body(verified_body)
-        .send()
-        .await
-        .context("Failed to upload object to S3")?;
-
-    Ok(())
 }
 
 fn db_create_definition(
@@ -253,7 +205,7 @@ pub async fn create_definition(
             .context("Failed to read definition file from path")?,
     };
 
-    s3_put_stream(s3_client, &obj_key, body, &payload.digest)
+    s3::put_stream(s3_client, "definitions", &obj_key, body, Some(&payload.digest))
         .await
         .context("Failed to upload definition to S3")?;
 
@@ -330,7 +282,7 @@ pub async fn update_definition_from_source(
             .context("Failed to read updated definition file from path")?,
     };
 
-    s3_put_stream(s3_client, &obj_key, body, &remote_payload.digest)
+    s3::put_stream(s3_client, "definitions", &obj_key, body, Some(&remote_payload.digest))
         .await
         .context("Failed to upload updated definition to S3")?;
 
