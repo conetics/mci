@@ -1,7 +1,10 @@
 use crate::{
     errors::AppError,
-    models::{Definition, UpdateDefinitionRequest},
-    services::definitions_services::{self, DefinitionFilter, DefinitionPayload},
+    models::{Definition, Module, UpdateDefinitionRequest, UpdateModuleRequest},
+    services::{
+        definitions_services::{self, DefinitionFilter, DefinitionPayload},
+        modules_services::{self, ModuleFilter, ModulePayload},
+    },
     AppState,
 };
 use axum::{
@@ -14,6 +17,12 @@ use validator::Validate;
 
 #[derive(Debug, Deserialize, Validate)]
 pub struct InstallDefinitionRequest {
+    #[validate(url)]
+    pub source: String,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct InstallModuleRequest {
     #[validate(url)]
     pub source: String,
 }
@@ -142,4 +151,124 @@ pub async fn upgrade_definition(
     .await?;
 
     Ok(Json(definition))
+}
+
+pub async fn list_modules(
+    State(state): State<AppState>,
+    Query(filter): Query<ModuleFilter>,
+) -> Result<Json<Vec<Module>>, AppError> {
+    let mut conn = state.db_pool.get()?;
+
+    let modules =
+        tokio::task::spawn_blocking(move || modules_services::list_modules(&mut conn, &filter))
+            .await??;
+
+    Ok(Json(modules))
+}
+
+pub async fn create_module(
+    State(state): State<AppState>,
+    Json(payload): Json<ModulePayload>,
+) -> Result<(StatusCode, Json<Module>), AppError> {
+    let db_pool = state.db_pool.clone();
+    let http_client = state.http_client.clone();
+    let s3_client = state.s3_client.clone();
+
+    let module =
+        modules_services::create_module(&mut db_pool.get()?, &http_client, &s3_client, &payload)
+            .await?;
+
+    Ok((StatusCode::CREATED, Json(module)))
+}
+
+pub async fn get_module(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<Module>, AppError> {
+    let mut conn = state.db_pool.get()?;
+
+    let module =
+        tokio::task::spawn_blocking(move || modules_services::get_module(&mut conn, &id)).await??;
+
+    Ok(Json(module))
+}
+
+pub async fn delete_module(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    let mut conn = state.db_pool.get()?;
+    let id_for_thread = id.clone();
+
+    let rows_deleted = tokio::task::spawn_blocking(move || {
+        modules_services::delete_module(&mut conn, &id_for_thread)
+    })
+    .await??;
+
+    if rows_deleted == 0 {
+        return Err(AppError::not_found(format!(
+            "Module with id '{}' not found",
+            id
+        )));
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn update_module(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(request): Json<UpdateModuleRequest>,
+) -> Result<Json<Module>, AppError> {
+    request.validate()?;
+
+    let update = request.into_changeset();
+    let mut conn = state.db_pool.get()?;
+
+    let module = tokio::task::spawn_blocking(move || {
+        modules_services::update_module(&mut conn, &id, &update)
+    })
+    .await??;
+
+    Ok(Json(module))
+}
+
+pub async fn install_module(
+    State(state): State<AppState>,
+    Json(request): Json<InstallModuleRequest>,
+) -> Result<(StatusCode, Json<Module>), AppError> {
+    request.validate()?;
+
+    let db_pool = state.db_pool.clone();
+    let http_client = state.http_client.clone();
+    let s3_client = state.s3_client.clone();
+
+    let module = modules_services::create_module_from_registry(
+        &mut db_pool.get()?,
+        &http_client,
+        &s3_client,
+        &request.source,
+    )
+    .await?;
+
+    Ok((StatusCode::CREATED, Json(module)))
+}
+
+pub async fn upgrade_module(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<Module>, AppError> {
+    let db_pool = state.db_pool.clone();
+    let http_client = state.http_client.clone();
+    let s3_client = state.s3_client.clone();
+
+    let module = modules_services::update_module_from_source(
+        &mut db_pool.get()?,
+        &http_client,
+        &s3_client,
+        &id,
+    )
+    .await?;
+
+    Ok(Json(module))
 }
