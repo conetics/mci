@@ -24,8 +24,8 @@ async fn list_modules_filters_and_sorting() -> Result<()> {
                         name: "Alpha".into(),
                         description: "First".into(),
                         module_object_key: "k1.wasm".into(),
-                        configuration_object_key: "k1.wasm".into(),
-                        secrets_object_key: "k1.wasm".into(),
+                        configuration_object_key: "k1".into(),
+                        secrets_object_key: "k1".into(),
                         digest: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
                             .into(),
                         source_url: None,
@@ -36,8 +36,8 @@ async fn list_modules_filters_and_sorting() -> Result<()> {
                         name: "Beta".into(),
                         description: "Second".into(),
                         module_object_key: "k2.wasm".into(),
-                        configuration_object_key: "k2.wasm".into(),
-                        secrets_object_key: "k2.wasm".into(),
+                        configuration_object_key: "k2".into(),
+                        secrets_object_key: "k2".into(),
                         digest: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
                             .into(),
                         source_url: None,
@@ -48,8 +48,8 @@ async fn list_modules_filters_and_sorting() -> Result<()> {
                         name: "Gamma".into(),
                         description: "Third".into(),
                         module_object_key: "k3.wasm".into(),
-                        configuration_object_key: "k3.wasm".into(),
-                        secrets_object_key: "k3.wasm".into(),
+                        configuration_object_key: "k3".into(),
+                        secrets_object_key: "k3".into(),
                         digest: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
                             .into(),
                         source_url: None,

@@ -211,8 +211,8 @@ pub async fn create_module(
         name: payload.name.clone(),
         description: payload.description.clone(),
         module_object_key: obj_key.clone(),
-        configuration_object_key: obj_key.clone(),
-        secrets_object_key: obj_key.clone(),
+        configuration_object_key: payload.id.clone(),
+        secrets_object_key: payload.id.clone(),
         digest: payload.digest.clone(),
         source_url: payload.source_url.clone(),
     };
