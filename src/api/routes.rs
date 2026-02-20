@@ -16,6 +16,13 @@ pub fn routes() -> Router<AppState> {
             "/definitions/{id}/update",
             post(handlers::upgrade_definition),
         )
+        .route("/modules", get(handlers::list_modules))
+        .route("/modules", post(handlers::create_module))
+        .route("/modules/install", post(handlers::install_module))
+        .route("/modules/{id}", get(handlers::get_module))
+        .route("/modules/{id}", delete(handlers::delete_module))
+        .route("/modules/{id}", patch(handlers::update_module))
+        .route("/modules/{id}/update", post(handlers::upgrade_module))
 
     //.route("/definitions/{id}/configuration", get(handlers::get_definition_configuration))
     // .route("/definitions/{id}/configuration", put(handlers::set_definition_configuration))
