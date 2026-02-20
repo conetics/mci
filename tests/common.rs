@@ -9,6 +9,7 @@ use testcontainers_modules::{
 #[allow(dead_code)]
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
+#[allow(dead_code)]
 pub async fn initialize_s3() -> Result<(ContainerAsync<minio::MinIO>, aws_sdk_s3::Client)> {
     let container = minio::MinIO::default().start().await?;
 
