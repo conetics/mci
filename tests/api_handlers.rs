@@ -295,7 +295,7 @@ async fn install_and_upgrade_definition_from_http_registry() -> Result<()> {
 
     Mock::given(method("GET"))
         .and(path("/registry.json"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(&json!({
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "id": "api-def-2",
             "name": "Registry Name",
             "type": "reg-type",
@@ -343,7 +343,7 @@ async fn install_and_upgrade_definition_from_http_registry() -> Result<()> {
 
     Mock::given(method("GET"))
         .and(path("/registry.json"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(&json!({
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "id": "api-def-2",
             "name": "Registry Name v2",
             "type": "reg-type",
