@@ -6,6 +6,7 @@ use testcontainers_modules::{
     testcontainers::{runners::AsyncRunner, ContainerAsync},
 };
 
+#[allow(dead_code)]
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
 pub async fn initialize_s3() -> Result<(ContainerAsync<minio::MinIO>, aws_sdk_s3::Client)> {
@@ -20,6 +21,7 @@ pub async fn initialize_s3() -> Result<(ContainerAsync<minio::MinIO>, aws_sdk_s3
     Ok((container, client))
 }
 
+#[allow(dead_code)]
 pub async fn initialize_pg() -> Result<(ContainerAsync<postgres::Postgres>, db::PgPool)> {
     let container = postgres::Postgres::default().start().await?;
 

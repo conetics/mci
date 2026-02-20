@@ -30,7 +30,7 @@ fn validate_digest(digest: &str) -> Result<(), ValidationError> {
     }
 }
 
-#[derive(Queryable, Selectable, Serialize)]
+#[derive(Queryable, Selectable, Serialize, Deserialize)]
 #[diesel(table_name = definitions)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Definition {
@@ -95,6 +95,52 @@ pub struct UpdateDefinition {
     pub source_url: Option<String>,
 }
 
+#[derive(Debug, Deserialize, Validate)]
+#[validate(schema(function = "validate_update_request"))]
+pub struct UpdateDefinitionRequest {
+    pub is_enabled: Option<bool>,
+
+    #[validate(length(min = 3, max = 64), regex(path = *regex_utils::TYPE_IDENTIFIER))]
+    pub type_: Option<String>,
+
+    #[validate(length(min = 3, max = 64))]
+    pub name: Option<String>,
+
+    #[validate(length(max = 300))]
+    pub description: Option<String>,
+
+    #[validate(url)]
+    pub file_url: Option<String>,
+
+    #[validate(custom(function = "validate_digest"))]
+    pub digest: Option<String>,
+
+    #[validate(url)]
+    pub source_url: Option<String>,
+}
+
+impl UpdateDefinitionRequest {
+    pub fn into_changeset(self) -> UpdateDefinition {
+        UpdateDefinition {
+            is_enabled: self.is_enabled,
+            type_: self.type_,
+            name: self.name,
+            description: self.description,
+            digest: self.digest,
+            source_url: self.source_url,
+        }
+    }
+}
+
+fn validate_update_request(req: &UpdateDefinitionRequest) -> Result<(), ValidationError> {
+    if req.digest.is_some() && req.file_url.is_none() {
+        let mut error = ValidationError::new("digest_requires_file_url");
+        error.message = Some("digest cannot be updated without also providing file_url".into());
+        return Err(error);
+    }
+    Ok(())
+}
+
 #[derive(Serialize)]
 pub struct Build {
     pub id: i32,
@@ -142,5 +188,76 @@ mod tests {
         let result = validate_digest(digest);
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().code, "invalid_hash_format");
+    }
+
+    #[test]
+    fn test_update_definition_digest_without_file_url_rejected() {
+        let req = UpdateDefinitionRequest {
+            digest: Some(
+                "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                    .to_string(),
+            ),
+            is_enabled: None,
+            type_: None,
+            name: None,
+            description: None,
+            file_url: None,
+            source_url: None,
+        };
+        let result = req.validate();
+        assert!(result.is_err());
+        let errors = result.unwrap_err();
+        assert!(
+            errors
+                .to_string()
+                .contains("digest cannot be updated without also providing file_url"),
+            "expected digest_requires_file_url error, got: {}",
+            errors
+        );
+    }
+
+    #[test]
+    fn test_update_definition_file_url_without_digest_accepted() {
+        let req = UpdateDefinitionRequest {
+            file_url: Some("http://example.com/file.json".to_string()),
+            is_enabled: None,
+            type_: None,
+            name: None,
+            description: None,
+            digest: None,
+            source_url: None,
+        };
+        assert!(req.validate().is_ok());
+    }
+
+    #[test]
+    fn test_update_definition_file_url_with_digest_accepted() {
+        let req = UpdateDefinitionRequest {
+            file_url: Some("http://example.com/file.json".to_string()),
+            digest: Some(
+                "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                    .to_string(),
+            ),
+            is_enabled: None,
+            type_: None,
+            name: None,
+            description: None,
+            source_url: None,
+        };
+        assert!(req.validate().is_ok());
+    }
+
+    #[test]
+    fn test_update_definition_no_digest_no_file_url_accepted() {
+        let req = UpdateDefinitionRequest {
+            name: Some("New Name".to_string()),
+            is_enabled: None,
+            type_: None,
+            description: None,
+            file_url: None,
+            digest: None,
+            source_url: None,
+        };
+        assert!(req.validate().is_ok());
     }
 }

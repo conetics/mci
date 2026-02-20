@@ -1,6 +1,6 @@
 use crate::{
     errors::AppError,
-    models::{Definition, UpdateDefinition},
+    models::{Definition, UpdateDefinitionRequest},
     services::definitions_services::{self, DefinitionFilter, DefinitionPayload},
     AppState,
 };
@@ -89,10 +89,11 @@ pub async fn delete_definition(
 pub async fn update_definition(
     State(state): State<AppState>,
     Path(id): Path<String>,
-    Json(update): Json<UpdateDefinition>,
+    Json(request): Json<UpdateDefinitionRequest>,
 ) -> Result<Json<Definition>, AppError> {
-    update.validate()?;
+    request.validate()?;
 
+    let update = request.into_changeset();
     let mut conn = state.db_pool.get()?;
 
     let definition = tokio::task::spawn_blocking(move || {

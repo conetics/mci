@@ -358,4 +358,135 @@ mod tests {
         assert!(display.contains("Unsupported scheme"));
         assert!(display.contains("ftp"));
     }
+
+    #[tokio::test]
+    async fn test_app_error_conflict_response() {
+        let error = AppError::conflict("Definition with ID 'x' already exists");
+        let response = error.into_response();
+
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+
+        let body = response.into_body();
+        let bytes = body.collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+
+        assert_eq!(json["error"]["type"], "conflict");
+        assert!(json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("already exists"));
+    }
+
+    #[tokio::test]
+    async fn test_app_error_database_response_hides_details() {
+        let diesel_error = diesel::result::Error::DatabaseError(
+            diesel::result::DatabaseErrorKind::UniqueViolation,
+            Box::new("duplicate key violates unique constraint".to_string()),
+        );
+        let error = AppError::from(diesel_error);
+        let response = error.into_response();
+
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+        let body = response.into_body();
+        let bytes = body.collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+
+        assert_eq!(json["error"]["type"], "database_error");
+        assert_eq!(json["error"]["message"], "A database error occurred");
+        assert!(!json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("duplicate key"));
+    }
+
+    #[tokio::test]
+    async fn test_app_error_pool_response_hides_details() {
+        let manager = diesel::r2d2::ConnectionManager::<diesel::PgConnection>::new(
+            "postgres://invalid:invalid@192.0.2.1:5432/invalid",
+        );
+        let pool = diesel::r2d2::Pool::builder()
+            .max_size(1)
+            .connection_timeout(std::time::Duration::from_millis(50))
+            .build_unchecked(manager);
+
+        let pool_err = match pool.get() {
+            Err(e) => e,
+            Ok(_) => panic!("expected pool error"),
+        };
+        let error = AppError::Pool(pool_err);
+
+        let display = format!("{}", error);
+        assert!(display.contains("Connection pool error"));
+
+        let response = error.into_response();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+        let body = response.into_body();
+        let bytes = body.collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+
+        assert_eq!(json["error"]["type"], "pool_error");
+        assert_eq!(json["error"]["message"], "Database connection error");
+    }
+
+    #[test]
+    fn test_from_anyhow_error() {
+        let anyhow_err = anyhow::anyhow!("something went wrong");
+        let app_error = AppError::from(anyhow_err);
+
+        match app_error {
+            AppError::Internal(err) => {
+                assert!(err.to_string().contains("something went wrong"));
+            }
+            _ => panic!("Expected Internal variant"),
+        }
+    }
+
+    #[test]
+    fn test_from_validation_errors() {
+        let test = TestStruct {
+            name: "ab".to_string(),
+            age: 15,
+        };
+        let validation_errors = test.validate().unwrap_err();
+        let app_error = AppError::from(validation_errors);
+
+        match app_error {
+            AppError::Validation(_) => {}
+            _ => panic!("Expected Validation variant"),
+        }
+    }
+
+    #[test]
+    fn test_conflict_display() {
+        let error = AppError::conflict("duplicate item");
+        let display = format!("{}", error);
+        assert!(display.contains("Conflict"));
+        assert!(display.contains("duplicate item"));
+    }
+
+    #[test]
+    fn test_not_found_display() {
+        let error = AppError::not_found("missing item");
+        let display = format!("{}", error);
+        assert!(display.contains("Not found"));
+        assert!(display.contains("missing item"));
+    }
+
+    #[test]
+    fn test_bad_request_display() {
+        let error = AppError::bad_request("bad input");
+        let display = format!("{}", error);
+        assert!(display.contains("Bad request"));
+        assert!(display.contains("bad input"));
+    }
+
+    #[test]
+    fn test_internal_display() {
+        let error = AppError::internal(anyhow::anyhow!("boom"));
+        let display = format!("{}", error);
+        assert!(display.contains("Internal error"));
+        assert!(display.contains("boom"));
+    }
 }

@@ -105,7 +105,11 @@ async fn create_definition_conflict_errors() -> Result<()> {
     let (pg_container, pool) = common::initialize_pg().await?;
     let (s3_container, s3_client) = common::initialize_s3().await?;
 
-    s3_client.create_bucket().bucket("definitions").send().await?;
+    s3_client
+        .create_bucket()
+        .bucket("definitions")
+        .send()
+        .await?;
 
     let mock = MockServer::start().await;
     let mock_uri = mock.uri();
@@ -121,15 +125,17 @@ async fn create_definition_conflict_errors() -> Result<()> {
 
     Mock::given(method("GET"))
         .and(path("/meta.json"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(&DefinitionPayload {
-            id: "def-2".into(),
-            name: "Name".into(),
-            r#type: "t".into(),
-            description: "d".into(),
-            file_url: format!("{}/file.json", mock_uri.clone()),
-            digest: digest_str.clone(),
-            source_url: Some(format!("{}/meta.json", mock_uri.clone())),
-        }))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(&DefinitionPayload {
+                id: "def-2".into(),
+                name: "Name".into(),
+                r#type: "t".into(),
+                description: "d".into(),
+                file_url: format!("{}/file.json", mock_uri.clone()),
+                digest: digest_str.clone(),
+                source_url: Some(format!("{}/meta.json", mock_uri.clone())),
+            }),
+        )
         .mount(&mock)
         .await;
 
@@ -157,7 +163,9 @@ async fn create_definition_conflict_errors() -> Result<()> {
                 source_url: None,
             };
             tokio::runtime::Handle::current()
-                .block_on(async { create_definition(&mut conn, &http_client, &s3_client, &payload).await })
+                .block_on(async {
+                    create_definition(&mut conn, &http_client, &s3_client, &payload).await
+                })
                 .map(|_| ())
         }
     })
@@ -184,8 +192,9 @@ async fn create_definition_conflict_errors() -> Result<()> {
                 digest: digest_for_task,
                 source_url: Some(meta_url),
             };
-            tokio::runtime::Handle::current()
-                .block_on(async { create_definition(&mut conn, &http_client, &s3_client, &payload).await })?;
+            tokio::runtime::Handle::current().block_on(async {
+                create_definition(&mut conn, &http_client, &s3_client, &payload).await
+            })?;
             Ok(())
         }
     })
@@ -195,7 +204,9 @@ async fn create_definition_conflict_errors() -> Result<()> {
 
     let err = conflict_result.unwrap_err();
 
-    assert!(err.to_string().contains("Conflict: Definition with ID 'def-2'"));
+    assert!(err
+        .to_string()
+        .contains("Conflict: Definition with ID 'def-2'"));
 
     pg_container.stop().await.ok();
     s3_container.stop().await.ok();
