@@ -141,13 +141,20 @@ impl UpdateDefinitionRequest {
     }
 }
 
-fn validate_update_request(req: &UpdateDefinitionRequest) -> Result<(), ValidationError> {
-    if req.digest.is_some() && req.file_url.is_none() {
+fn validate_digest_with_file_url(
+    digest: &Option<String>,
+    file_url: &Option<String>,
+) -> Result<(), ValidationError> {
+    if digest.is_some() && file_url.is_none() {
         let mut error = ValidationError::new("digest_requires_file_url");
         error.message = Some("digest cannot be updated without also providing file_url".into());
         return Err(error);
     }
     Ok(())
+}
+
+fn validate_update_request(req: &UpdateDefinitionRequest) -> Result<(), ValidationError> {
+    validate_digest_with_file_url(&req.digest, &req.file_url)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, AsExpression, FromSqlRow)]
@@ -215,7 +222,7 @@ pub struct NewModule {
     #[validate(length(min = 3, max = 64))]
     pub name: String,
 
-    #[validate(length(max = 300))]
+    #[validate(length(max = 500))]
     pub description: String,
 
     pub module_object_key: String,
@@ -241,7 +248,7 @@ pub struct UpdateModule {
     #[validate(length(min = 3, max = 64))]
     pub name: Option<String>,
 
-    #[validate(length(max = 300))]
+    #[validate(length(max = 500))]
     pub description: Option<String>,
 
     #[validate(custom(function = "validate_digest"))]
@@ -261,7 +268,7 @@ pub struct UpdateModuleRequest {
     #[validate(length(min = 3, max = 64))]
     pub name: Option<String>,
 
-    #[validate(length(max = 300))]
+    #[validate(length(max = 500))]
     pub description: Option<String>,
 
     #[validate(url)]
@@ -288,12 +295,7 @@ impl UpdateModuleRequest {
 }
 
 fn validate_module_update_request(req: &UpdateModuleRequest) -> Result<(), ValidationError> {
-    if req.digest.is_some() && req.file_url.is_none() {
-        let mut error = ValidationError::new("digest_requires_file_url");
-        error.message = Some("digest cannot be updated without also providing file_url".into());
-        return Err(error);
-    }
-    Ok(())
+    validate_digest_with_file_url(&req.digest, &req.file_url)
 }
 
 #[derive(Serialize)]
