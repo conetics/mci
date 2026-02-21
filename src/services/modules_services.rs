@@ -183,7 +183,7 @@ pub async fn create_module(
 
     ensure_wasm_file(&payload.file_url)?;
     let module_source = source_utils::Source::parse(&payload.file_url)?;
-    let obj_key = format!("{}.wasm", payload.id);
+    let obj_key = format!("{}/module.wasm", payload.id);
 
     let body = match &module_source {
         source_utils::Source::Http(url) => {
@@ -210,9 +210,6 @@ pub async fn create_module(
         type_: payload.r#type,
         name: payload.name.clone(),
         description: payload.description.clone(),
-        module_object_key: obj_key.clone(),
-        configuration_object_key: payload.id.clone(),
-        secrets_object_key: payload.id.clone(),
         digest: payload.digest.clone(),
         source_url: payload.source_url.clone(),
     };
@@ -261,7 +258,7 @@ pub async fn update_module_from_source(
 
     ensure_wasm_file(&remote_payload.file_url)?;
     let module_file_source = source_utils::Source::parse(&remote_payload.file_url)?;
-    let obj_key = format!("{}.wasm", module.id);
+    let obj_key = format!("{}/module.wasm", module.id);
     let body = match &module_file_source {
         source_utils::Source::Http(url) => {
             let response = stream_utils::stream_content_from_url(http_client, url)

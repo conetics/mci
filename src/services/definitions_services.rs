@@ -58,6 +58,7 @@ async fn fetch_definition_from_path(path: &Path) -> Result<DefinitionPayload> {
     let definition_payload = serde_json::from_str::<DefinitionPayload>(&content)
         .context("Failed to parse definition JSON")?;
 
+
     Ok(definition_payload)
 }
 
@@ -187,7 +188,7 @@ pub async fn create_definition(
     }
 
     let definition_url = source_utils::Source::parse(&payload.file_url)?;
-    let obj_key = payload.id.clone();
+    let obj_key = format!("{}/definition", payload.id);
 
     let body = match &definition_url {
         source_utils::Source::Http(url) => {
@@ -220,9 +221,6 @@ pub async fn create_definition(
         type_: payload.r#type.clone(),
         name: payload.name.clone(),
         description: payload.description.clone(),
-        definition_object_key: obj_key.clone(),
-        configuration_object_key: obj_key.clone(),
-        secrets_object_key: obj_key.clone(),
         digest: payload.digest.clone(),
         source_url: payload.source_url.clone(),
     };
@@ -270,7 +268,7 @@ pub async fn update_definition_from_source(
     }
 
     let definition_file_source = source_utils::Source::parse(&remote_payload.file_url)?;
-    let obj_key = definition.id.clone();
+    let obj_key = format!("{}/definition", definition.id);
     let body = match &definition_file_source {
         source_utils::Source::Http(url) => {
             let response = stream_utils::stream_content_from_url(http_client, url)

@@ -48,9 +48,6 @@ pub struct Definition {
     pub is_enabled: bool,
     pub name: String,
     pub description: String,
-    pub definition_object_key: String,
-    pub configuration_object_key: String,
-    pub secrets_object_key: String,
     pub digest: String,
     pub source_url: Option<String>,
 }
@@ -69,12 +66,6 @@ pub struct NewDefinition {
 
     #[validate(length(max = 500))]
     pub description: String,
-
-    pub definition_object_key: String,
-
-    pub configuration_object_key: String,
-
-    pub secrets_object_key: String,
 
     #[validate(custom(function = "validate_digest"))]
     pub digest: String,
@@ -204,9 +195,6 @@ pub struct Module {
     pub is_enabled: bool,
     pub name: String,
     pub description: String,
-    pub module_object_key: String,
-    pub configuration_object_key: String,
-    pub secrets_object_key: String,
     pub digest: String,
     pub source_url: Option<String>,
 }
@@ -224,12 +212,6 @@ pub struct NewModule {
 
     #[validate(length(max = 500))]
     pub description: String,
-
-    pub module_object_key: String,
-
-    pub configuration_object_key: String,
-
-    pub secrets_object_key: String,
 
     #[validate(custom(function = "validate_digest"))]
     pub digest: String,
