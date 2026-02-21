@@ -13,7 +13,6 @@ use futures::stream::TryStreamExt;
 use http_body_util::StreamBody;
 use reqwest;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
 use tokio::fs;
 
 #[derive(Debug, Deserialize)]
@@ -51,54 +50,34 @@ pub struct DefinitionPayload {
     pub source_url: Option<String>,
 }
 
-async fn fetch_definition_from_path(path: &Path) -> Result<DefinitionPayload> {
-    let content = fs::read_to_string(path)
-        .await
-        .context("Failed to read definition file")?;
-    let definition_payload = serde_json::from_str::<DefinitionPayload>(&content)
-        .context("Failed to parse definition JSON")?;
-
-
-    Ok(definition_payload)
-}
-
-async fn fetch_definition_from_url(
-    http_client: &reqwest::Client,
-    url: &str,
-) -> Result<DefinitionPayload> {
-    let definition_payload = http_client
-        .get(url)
-        .header("User-Agent", "MCI/1.0")
-        .send()
-        .await
-        .context("Failed to send HTTP request")?
-        .error_for_status()
-        .context("HTTP request returned error status")?
-        .json::<DefinitionPayload>()
-        .await
-        .context("Failed to parse definition JSON from response")?;
-
-    Ok(definition_payload)
-}
-
 async fn fetch_definition(
     http_client: &reqwest::Client,
     source: &source_utils::Source,
 ) -> Result<DefinitionPayload> {
     match source {
-        source_utils::Source::Http(url) => fetch_definition_from_url(http_client, url).await,
-        source_utils::Source::File(path) => fetch_definition_from_path(path).await,
+        source_utils::Source::Http(url) => {
+            let definition_payload = http_client
+                .get(url)
+                .header("User-Agent", "MCI/1.0")
+                .send()
+                .await
+                .context("Failed to send HTTP request")?
+                .error_for_status()
+                .context("HTTP request returned error status")?
+                .json::<DefinitionPayload>()
+                .await
+                .context("Failed to parse definition JSON from response")?;
+            Ok(definition_payload)
+        }
+        source_utils::Source::File(path) => {
+            let content = fs::read_to_string(path)
+                .await
+                .context("Failed to read definition file")?;
+            let definition_payload = serde_json::from_str::<DefinitionPayload>(&content)
+                .context("Failed to parse definition JSON")?;
+            Ok(definition_payload)
+        }
     }
-}
-
-fn db_create_definition(
-    conn: &mut DbConnection,
-    new_definition: &NewDefinition,
-) -> QueryResult<Definition> {
-    diesel::insert_into(definitions::table)
-        .values(new_definition)
-        .returning(Definition::as_returning())
-        .get_result(conn)
 }
 
 fn db_update_definition(
@@ -119,8 +98,33 @@ pub fn get_definition(conn: &mut DbConnection, definition_id: &str) -> QueryResu
         .first(conn)
 }
 
-pub fn delete_definition(conn: &mut DbConnection, definition_id: &str) -> QueryResult<usize> {
-    diesel::delete(definitions::table.find(definition_id)).execute(conn)
+pub async fn delete_definition(
+    conn: &mut DbConnection,
+    s3_client: &aws_sdk_s3::Client,
+    definition_id: &str,
+) -> Result<usize> {
+    let prefix = format!("{}/", definition_id);
+    let objects = s3_client
+        .list_objects_v2()
+        .bucket("definitions")
+        .prefix(&prefix)
+        .send()
+        .await
+        .context("Failed to list objects for deletion in S3")?;
+
+    for obj in objects.contents() {
+        if let Some(key) = obj.key() {
+            s3_client
+                .delete_object()
+                .bucket("definitions")
+                .key(key)
+                .send()
+                .await
+                .context(format!("Failed to delete S3 object: {}", key))?;
+        }
+    }
+
+    Ok(diesel::delete(definitions::table.find(definition_id)).execute(conn)?)
 }
 
 pub fn update_definition(
@@ -225,7 +229,11 @@ pub async fn create_definition(
         source_url: payload.source_url.clone(),
     };
 
-    db_create_definition(conn, &new_definition).context("Failed to save definition to database")
+    diesel::insert_into(definitions::table)
+        .values(&new_definition)
+        .returning(Definition::as_returning())
+        .get_result(conn)
+        .context("Failed to save definition to database")
 }
 
 pub async fn create_definition_from_registry(

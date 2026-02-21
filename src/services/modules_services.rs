@@ -13,15 +13,7 @@ use futures::stream::TryStreamExt;
 use http_body_util::StreamBody;
 use reqwest;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
 use tokio::fs;
-
-fn ensure_wasm_file(file_url: &str) -> Result<()> {
-    if !file_url.to_lowercase().ends_with(".wasm") {
-        anyhow::bail!("Modules must reference a .wasm file");
-    }
-    Ok(())
-}
 
 #[derive(Debug, Deserialize)]
 pub enum SortBy {
@@ -58,47 +50,34 @@ pub struct ModulePayload {
     pub source_url: Option<String>,
 }
 
-async fn fetch_module_from_path(path: &Path) -> Result<ModulePayload> {
-    let content = fs::read_to_string(path)
-        .await
-        .context("Failed to read module file")?;
-    let module_payload =
-        serde_json::from_str::<ModulePayload>(&content).context("Failed to parse module JSON")?;
-
-    Ok(module_payload)
-}
-
-async fn fetch_module_from_url(http_client: &reqwest::Client, url: &str) -> Result<ModulePayload> {
-    let module_payload = http_client
-        .get(url)
-        .header("User-Agent", "MCI/1.0")
-        .send()
-        .await
-        .context("Failed to send HTTP request")?
-        .error_for_status()
-        .context("HTTP request returned error status")?
-        .json::<ModulePayload>()
-        .await
-        .context("Failed to parse module JSON from response")?;
-
-    Ok(module_payload)
-}
-
 async fn fetch_module(
     http_client: &reqwest::Client,
     source: &source_utils::Source,
 ) -> Result<ModulePayload> {
     match source {
-        source_utils::Source::Http(url) => fetch_module_from_url(http_client, url).await,
-        source_utils::Source::File(path) => fetch_module_from_path(path).await,
+        source_utils::Source::Http(url) => {
+            let module_payload = http_client
+                .get(url)
+                .header("User-Agent", "MCI/1.0")
+                .send()
+                .await
+                .context("Failed to send HTTP request")?
+                .error_for_status()
+                .context("HTTP request returned error status")?
+                .json::<ModulePayload>()
+                .await
+                .context("Failed to parse module JSON from response")?;
+            Ok(module_payload)
+        }
+        source_utils::Source::File(path) => {
+            let content = fs::read_to_string(path)
+                .await
+                .context("Failed to read module file")?;
+            let module_payload = serde_json::from_str::<ModulePayload>(&content)
+                .context("Failed to parse module JSON")?;
+            Ok(module_payload)
+        }
     }
-}
-
-fn db_create_module(conn: &mut DbConnection, new_module: &NewModule) -> QueryResult<Module> {
-    diesel::insert_into(modules::table)
-        .values(new_module)
-        .returning(Module::as_returning())
-        .get_result(conn)
 }
 
 fn db_update_module(
@@ -119,8 +98,33 @@ pub fn get_module(conn: &mut DbConnection, module_id: &str) -> QueryResult<Modul
         .first(conn)
 }
 
-pub fn delete_module(conn: &mut DbConnection, module_id: &str) -> QueryResult<usize> {
-    diesel::delete(modules::table.find(module_id)).execute(conn)
+pub async fn delete_module(
+    conn: &mut DbConnection,
+    s3_client: &aws_sdk_s3::Client,
+    module_id: &str,
+) -> Result<usize> {
+    let prefix = format!("{}/", module_id);
+    let objects = s3_client
+        .list_objects_v2()
+        .bucket("modules")
+        .prefix(&prefix)
+        .send()
+        .await
+        .context("Failed to list objects for deletion in S3")?;
+
+    for obj in objects.contents() {
+        if let Some(key) = obj.key() {
+            s3_client
+                .delete_object()
+                .bucket("modules")
+                .key(key)
+                .send()
+                .await
+                .context(format!("Failed to delete S3 object: {}", key))?;
+        }
+    }
+
+    Ok(diesel::delete(modules::table.find(module_id)).execute(conn)?)
 }
 
 pub fn update_module(
@@ -181,7 +185,6 @@ pub async fn create_module(
         anyhow::bail!("Conflict: Module with ID '{}' already exists", payload.id);
     }
 
-    ensure_wasm_file(&payload.file_url)?;
     let module_source = source_utils::Source::parse(&payload.file_url)?;
     let obj_key = format!("{}/module.wasm", payload.id);
 
@@ -214,7 +217,11 @@ pub async fn create_module(
         source_url: payload.source_url.clone(),
     };
 
-    db_create_module(conn, &new_module).context("Failed to save module to database")
+    diesel::insert_into(modules::table)
+        .values(&new_module)
+        .returning(Module::as_returning())
+        .get_result(conn)
+        .context("Failed to save module to database")
 }
 
 pub async fn create_module_from_registry(
@@ -256,7 +263,6 @@ pub async fn update_module_from_source(
         return Ok(module);
     }
 
-    ensure_wasm_file(&remote_payload.file_url)?;
     let module_file_source = source_utils::Source::parse(&remote_payload.file_url)?;
     let obj_key = format!("{}/module.wasm", module.id);
     let body = match &module_file_source {
@@ -294,3 +300,8 @@ pub async fn update_module_from_source(
 
     db_update_module(conn, module_id, &update_data).context("Failed to update module in database")
 }
+
+
+#[cfg(test)]
+#[path = "modules_services_tests.rs"]
+mod tests;

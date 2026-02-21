@@ -78,12 +78,8 @@ pub async fn delete_definition(
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
     let mut conn = state.db_pool.get()?;
-    let id_for_thread = id.clone();
-
-    let rows_deleted = tokio::task::spawn_blocking(move || {
-        definitions_services::delete_definition(&mut conn, &id_for_thread)
-    })
-    .await??;
+    let s3_client = state.s3_client.clone();
+    let rows_deleted = definitions_services::delete_definition(&mut conn, &s3_client, &id).await?;
 
     if rows_deleted == 0 {
         return Err(AppError::not_found(format!(
@@ -198,12 +194,8 @@ pub async fn delete_module(
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
     let mut conn = state.db_pool.get()?;
-    let id_for_thread = id.clone();
-
-    let rows_deleted = tokio::task::spawn_blocking(move || {
-        modules_services::delete_module(&mut conn, &id_for_thread)
-    })
-    .await??;
+    let s3_client = state.s3_client.clone();
+    let rows_deleted = modules_services::delete_module(&mut conn, &s3_client, &id).await?;
 
     if rows_deleted == 0 {
         return Err(AppError::not_found(format!(

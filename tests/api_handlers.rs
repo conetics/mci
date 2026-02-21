@@ -1,4 +1,5 @@
 use anyhow::Result;
+use aws_sdk_s3::operation::list_objects_v2::ListObjectsV2Output;
 use axum::{
     body::Body,
     http::{self, Request, StatusCode},
@@ -186,8 +187,17 @@ async fn create_get_update_delete_definition_flow() -> Result<()> {
                 .unwrap(),
         )
         .await?;
-
     assert_eq!(gone_resp.status(), StatusCode::NOT_FOUND);
+
+    let (_, s3_client) = common::initialize_s3().await?;
+    let objects: ListObjectsV2Output = s3_client
+        .list_objects_v2()
+        .bucket("definitions")
+        .prefix("api-def-1/")
+        .send()
+        .await?;
+
+    assert!(objects.contents().is_empty());
 
     pg_container.stop().await.ok();
     s3_container.stop().await.ok();
@@ -522,8 +532,17 @@ async fn create_get_update_delete_module_flow() -> Result<()> {
                 .unwrap(),
         )
         .await?;
-
     assert_eq!(gone_resp.status(), StatusCode::NOT_FOUND);
+
+    let (_, s3_client) = common::initialize_s3().await?;
+    let objects: ListObjectsV2Output = s3_client
+        .list_objects_v2()
+        .bucket("modules")
+        .prefix("api-mod-1/")
+        .send()
+        .await?;
+
+    assert!(objects.contents().is_empty());
 
     pg_container.stop().await.ok();
     s3_container.stop().await.ok();

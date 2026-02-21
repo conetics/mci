@@ -39,6 +39,18 @@ fn validate_digest(digest: &str) -> Result<(), ValidationError> {
     }
 }
 
+fn validate_digest_requires_file_url(
+    digest: &Option<String>,
+    file_url: &Option<String>,
+) -> Result<(), ValidationError> {
+    if digest.is_some() && file_url.is_none() {
+        let mut error = ValidationError::new("digest_requires_file_url");
+        error.message = Some("digest cannot be updated without also providing file_url".into());
+        return Err(error);
+    }
+    Ok(())
+}
+
 #[derive(Queryable, Selectable, Serialize, Deserialize)]
 #[diesel(table_name = definitions)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
@@ -95,6 +107,10 @@ pub struct UpdateDefinition {
     pub source_url: Option<String>,
 }
 
+fn validate_update_request(req: &UpdateDefinitionRequest) -> Result<(), ValidationError> {
+    validate_digest_requires_file_url(&req.digest, &req.file_url)
+}
+
 #[derive(Debug, Deserialize, Validate)]
 #[validate(schema(function = "validate_update_request"))]
 pub struct UpdateDefinitionRequest {
@@ -130,22 +146,6 @@ impl UpdateDefinitionRequest {
             source_url: self.source_url,
         }
     }
-}
-
-fn validate_digest_with_file_url(
-    digest: &Option<String>,
-    file_url: &Option<String>,
-) -> Result<(), ValidationError> {
-    if digest.is_some() && file_url.is_none() {
-        let mut error = ValidationError::new("digest_requires_file_url");
-        error.message = Some("digest cannot be updated without also providing file_url".into());
-        return Err(error);
-    }
-    Ok(())
-}
-
-fn validate_update_request(req: &UpdateDefinitionRequest) -> Result<(), ValidationError> {
-    validate_digest_with_file_url(&req.digest, &req.file_url)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, AsExpression, FromSqlRow)]
@@ -238,6 +238,10 @@ pub struct UpdateModule {
     pub source_url: Option<String>,
 }
 
+fn validate_module_update_request(req: &UpdateModuleRequest) -> Result<(), ValidationError> {
+    validate_digest_requires_file_url(&req.digest, &req.file_url)
+}
+
 #[derive(Debug, Deserialize, Validate)]
 #[validate(schema(function = "validate_module_update_request"))]
 pub struct UpdateModuleRequest {
@@ -269,17 +273,6 @@ impl UpdateModuleRequest {
             source_url: self.source_url,
         }
     }
-}
-
-fn validate_module_update_request(req: &UpdateModuleRequest) -> Result<(), ValidationError> {
-    validate_digest_with_file_url(&req.digest, &req.file_url)
-}
-
-#[derive(Serialize)]
-pub struct Build {
-    pub id: i32,
-    pub name: String,
-    pub status: String,
 }
 
 #[cfg(test)]

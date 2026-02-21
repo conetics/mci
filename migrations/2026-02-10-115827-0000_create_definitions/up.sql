@@ -4,7 +4,6 @@ CREATE TABLE definitions (
     is_enabled BOOLEAN NOT NULL DEFAULT FALSE,
     name VARCHAR(64) NOT NULL,
     description VARCHAR(500) NOT NULL,
-    -- object key fields removed; S3 key is now derived as {id}/definition
     digest TEXT NOT NULL,
     source_url TEXT
 );

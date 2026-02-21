@@ -4,39 +4,39 @@ use tempfile::TempDir;
 use wiremock::matchers::{header, method, path as path_matcher};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-fn create_valid_payload() -> DefinitionPayload {
-    DefinitionPayload {
-        r#type: "test-type".to_string(),
-        description: "test description".to_string(),
+fn create_valid_payload() -> ModulePayload {
+    ModulePayload {
+        id: "test-mod-id".to_string(),
+        name: "Test Module".to_string(),
+        r#type: ModuleType::Sandbox,
+        description: "test module description".to_string(),
         file_url: "".to_string(),
         digest: "sha256:abc123".to_string(),
         source_url: None,
-        id: "test-id".to_string(),
-        name: "Test Definition".to_string(),
     }
 }
 
 #[cfg(test)]
-mod test_fetch_definition_from_path {
+mod test_fetch_module_from_path {
     use super::*;
     use std::path::Path;
 
     #[tokio::test]
     async fn test_valid_json_file() {
         let temp_dir = TempDir::new().unwrap();
-        let file_path = temp_dir.path().join("definition.json");
+        let file_path = temp_dir.path().join("module.json");
         let payload = create_valid_payload();
 
         write(&file_path, serde_json::to_string(&payload).unwrap()).unwrap();
 
         let client = reqwest::Client::new();
         let source = crate::utils::source_utils::Source::parse(file_path.to_str().unwrap()).unwrap();
-        let result = crate::services::definitions_services::fetch_definition(&client, &source).await;
+        let result = crate::services::modules_services::fetch_module(&client, &source).await;
         assert!(result.is_ok());
 
         let loaded = result.unwrap();
-        assert_eq!(loaded.id, "test-id");
-        assert_eq!(loaded.name, "Test Definition");
+        assert_eq!(loaded.id, "test-mod-id");
+        assert_eq!(loaded.name, "Test Module");
     }
 
     #[tokio::test]
@@ -44,16 +44,16 @@ mod test_fetch_definition_from_path {
         let temp_dir = TempDir::new().unwrap();
         let file_path = temp_dir.path().join("invalid.json");
 
-        write(&file_path, "not valid json {").unwrap();
+        write(&file_path, "not valid json {" ).unwrap();
 
         let client = reqwest::Client::new();
         let source = crate::utils::source_utils::Source::parse(file_path.to_str().unwrap()).unwrap();
-        let result = crate::services::definitions_services::fetch_definition(&client, &source).await;
+        let result = crate::services::modules_services::fetch_module(&client, &source).await;
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
             .to_string()
-            .contains("Failed to parse definition JSON"));
+            .contains("Failed to parse module JSON"));
     }
 
     #[tokio::test]
@@ -65,12 +65,12 @@ mod test_fetch_definition_from_path {
 
         let client = reqwest::Client::new();
         let source = crate::utils::source_utils::Source::parse(file_path.to_str().unwrap()).unwrap();
-        let result = crate::services::definitions_services::fetch_definition(&client, &source).await;
+        let result = crate::services::modules_services::fetch_module(&client, &source).await;
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
             .to_string()
-            .contains("Failed to parse definition JSON"));
+            .contains("Failed to parse module JSON"));
     }
 
     #[tokio::test]
@@ -84,7 +84,7 @@ mod test_fetch_definition_from_path {
 }
 
 #[cfg(test)]
-mod test_fetch_definition_from_url {
+mod test_fetch_module_from_url {
     use super::*;
 
     #[tokio::test]
@@ -93,22 +93,22 @@ mod test_fetch_definition_from_url {
         let payload = create_valid_payload();
 
         Mock::given(method("GET"))
-            .and(path_matcher("/definition.json"))
+            .and(path_matcher("/module.json"))
             .and(header("User-Agent", "MCI/1.0"))
             .respond_with(ResponseTemplate::new(200).set_body_json(&payload))
             .mount(&mock_server)
             .await;
 
         let client = reqwest::Client::new();
-        let url = format!("{}/definition.json", mock_server.uri());
+        let url = format!("{}/module.json", mock_server.uri());
         let source = crate::utils::source_utils::Source::parse(&url).unwrap();
 
-        let result = crate::services::definitions_services::fetch_definition(&client, &source).await;
+        let result = crate::services::modules_services::fetch_module(&client, &source).await;
         assert!(result.is_ok());
 
         let loaded = result.unwrap();
-        assert_eq!(loaded.id, "test-id");
-        assert_eq!(loaded.name, "Test Definition");
+        assert_eq!(loaded.id, "test-mod-id");
+        assert_eq!(loaded.name, "Test Module");
     }
 
     #[tokio::test]
@@ -125,7 +125,7 @@ mod test_fetch_definition_from_url {
         let url = format!("{}/notfound.json", mock_server.uri());
         let source = crate::utils::source_utils::Source::parse(&url).unwrap();
 
-        let result = crate::services::definitions_services::fetch_definition(&client, &source).await;
+        let result = crate::services::modules_services::fetch_module(&client, &source).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("error status"));
     }
@@ -144,7 +144,7 @@ mod test_fetch_definition_from_url {
         let url = format!("{}/error.json", mock_server.uri());
         let source = crate::utils::source_utils::Source::parse(&url).unwrap();
 
-        let result = crate::services::definitions_services::fetch_definition(&client, &source).await;
+        let result = crate::services::modules_services::fetch_module(&client, &source).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("error status"));
     }
@@ -163,20 +163,20 @@ mod test_fetch_definition_from_url {
         let url = format!("{}/invalid.json", mock_server.uri());
         let source = crate::utils::source_utils::Source::parse(&url).unwrap();
 
-        let result = crate::services::definitions_services::fetch_definition(&client, &source).await;
+        let result = crate::services::modules_services::fetch_module(&client, &source).await;
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
             .to_string()
-            .contains("Failed to parse definition JSON"));
+            .contains("Failed to parse module JSON"));
     }
 
     #[tokio::test]
     async fn test_connection_refused() {
         let client = reqwest::Client::new();
-        let url = "http://localhost:59999/definition.json";
+        let url = "http://localhost:59999/module.json";
         let source = crate::utils::source_utils::Source::parse(url).unwrap();
-        let result = crate::services::definitions_services::fetch_definition(&client, &source).await;
+        let result = crate::services::modules_services::fetch_module(&client, &source).await;
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -202,7 +202,7 @@ mod test_fetch_definition_from_url {
         let url = format!("{}/slow.json", mock_server.uri());
         let source = crate::utils::source_utils::Source::parse(&url).unwrap();
 
-        let result = crate::services::definitions_services::fetch_definition(&client, &source).await;
+        let result = crate::services::modules_services::fetch_module(&client, &source).await;
         assert!(result.is_err());
     }
 
@@ -212,7 +212,7 @@ mod test_fetch_definition_from_url {
         let payload = create_valid_payload();
 
         Mock::given(method("GET"))
-            .and(path_matcher("/definition.json"))
+            .and(path_matcher("/module.json"))
             .and(header("User-Agent", "MCI/1.0"))
             .respond_with(ResponseTemplate::new(200).set_body_json(&payload))
             .expect(1)
@@ -220,23 +220,23 @@ mod test_fetch_definition_from_url {
             .await;
 
         let client = reqwest::Client::new();
-        let url = format!("{}/definition.json", mock_server.uri());
+        let url = format!("{}/module.json", mock_server.uri());
         let source = crate::utils::source_utils::Source::parse(&url).unwrap();
 
-        let result = crate::services::definitions_services::fetch_definition(&client, &source).await;
+        let result = crate::services::modules_services::fetch_module(&client, &source).await;
         assert!(result.is_ok());
     }
 }
 
 #[cfg(test)]
-mod test_fetch_definition {
+mod test_fetch_module {
     use super::*;
     use url::Url;
 
     #[tokio::test]
     async fn test_fetch_from_file_source() {
         let temp_dir = TempDir::new().unwrap();
-        let file_path = temp_dir.path().join("definition.json");
+        let file_path = temp_dir.path().join("module.json");
         let payload = create_valid_payload();
 
         write(&file_path, serde_json::to_string(&payload).unwrap()).unwrap();
@@ -244,11 +244,11 @@ mod test_fetch_definition {
         let source = source_utils::Source::parse(file_path.to_str().unwrap()).unwrap();
         let client = reqwest::Client::new();
 
-        let result = fetch_definition(&client, &source).await;
+        let result = fetch_module(&client, &source).await;
         assert!(result.is_ok());
 
         let loaded = result.unwrap();
-        assert_eq!(loaded.id, "test-id");
+        assert_eq!(loaded.id, "test-mod-id");
     }
 
     #[tokio::test]
@@ -257,26 +257,26 @@ mod test_fetch_definition {
         let payload = create_valid_payload();
 
         Mock::given(method("GET"))
-            .and(path_matcher("/definition.json"))
+            .and(path_matcher("/module.json"))
             .respond_with(ResponseTemplate::new(200).set_body_json(&payload))
             .mount(&mock_server)
             .await;
 
-        let url = format!("{}/definition.json", mock_server.uri());
+        let url = format!("{}/module.json", mock_server.uri());
         let source = source_utils::Source::parse(&url).unwrap();
         let client = reqwest::Client::new();
 
-        let result = fetch_definition(&client, &source).await;
+        let result = fetch_module(&client, &source).await;
         assert!(result.is_ok());
 
         let loaded = result.unwrap();
-        assert_eq!(loaded.id, "test-id");
+        assert_eq!(loaded.id, "test-mod-id");
     }
 
     #[tokio::test]
     async fn test_fetch_from_file_url_source() {
         let temp_dir = TempDir::new().unwrap();
-        let file_path = temp_dir.path().join("definition.json");
+        let file_path = temp_dir.path().join("module.json");
         let payload = create_valid_payload();
 
         write(&file_path, serde_json::to_string(&payload).unwrap()).unwrap();
@@ -285,10 +285,10 @@ mod test_fetch_definition {
         let source = source_utils::Source::parse(file_url.as_str()).unwrap();
         let client = reqwest::Client::new();
 
-        let result = fetch_definition(&client, &source).await;
+        let result = fetch_module(&client, &source).await;
         assert!(result.is_ok());
 
         let loaded = result.unwrap();
-        assert_eq!(loaded.id, "test-id");
+        assert_eq!(loaded.id, "test-mod-id");
     }
 }
