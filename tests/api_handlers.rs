@@ -29,7 +29,11 @@ async fn setup_app() -> Result<(
     let (pg_container, pool) = common::initialize_pg().await?;
     let (s3_container, s3_client) = common::initialize_s3().await?;
 
-    s3_client.create_bucket().bucket("definitions").send().await?;
+    s3_client
+        .create_bucket()
+        .bucket("definitions")
+        .send()
+        .await?;
     s3_client.create_bucket().bucket("modules").send().await?;
 
     let state = AppState {
