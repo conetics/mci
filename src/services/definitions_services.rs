@@ -1,9 +1,8 @@
 use crate::{
     db::DbConnection,
     models::{Definition, NewDefinition, UpdateDefinition},
-    s3,
     schema::definitions,
-    utils::{source_utils, stream_utils},
+    utils::{s3_utils, source_utils, stream_utils},
 };
 use anyhow::{Context, Result};
 use aws_sdk_s3;
@@ -104,26 +103,7 @@ pub async fn delete_definition(
     definition_id: &str,
 ) -> Result<usize> {
     let prefix = format!("{}/", definition_id);
-    let objects = s3_client
-        .list_objects_v2()
-        .bucket("definitions")
-        .prefix(&prefix)
-        .send()
-        .await
-        .context("Failed to list objects for deletion in S3")?;
-
-    for obj in objects.contents() {
-        if let Some(key) = obj.key() {
-            s3_client
-                .delete_object()
-                .bucket("definitions")
-                .key(key)
-                .send()
-                .await
-                .context(format!("Failed to delete S3 object: {}", key))?;
-        }
-    }
-
+    s3_utils::delete_objects_with_prefix(s3_client, "definitions", &prefix).await?;
     Ok(diesel::delete(definitions::table.find(definition_id)).execute(conn)?)
 }
 
@@ -210,7 +190,7 @@ pub async fn create_definition(
             .context("Failed to read definition file from path")?,
     };
 
-    s3::put_stream(
+    s3_utils::put_stream(
         s3_client,
         "definitions",
         &obj_key,
@@ -293,7 +273,7 @@ pub async fn update_definition_from_source(
             .context("Failed to read updated definition file from path")?,
     };
 
-    s3::put_stream(
+    s3_utils::put_stream(
         s3_client,
         "definitions",
         &obj_key,

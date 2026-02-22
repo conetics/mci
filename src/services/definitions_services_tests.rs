@@ -30,8 +30,10 @@ mod test_fetch_definition_from_path {
         write(&file_path, serde_json::to_string(&payload).unwrap()).unwrap();
 
         let client = reqwest::Client::new();
-        let source = crate::utils::source_utils::Source::parse(file_path.to_str().unwrap()).unwrap();
-        let result = crate::services::definitions_services::fetch_definition(&client, &source).await;
+        let source =
+            crate::utils::source_utils::Source::parse(file_path.to_str().unwrap()).unwrap();
+        let result =
+            crate::services::definitions_services::fetch_definition(&client, &source).await;
         assert!(result.is_ok());
 
         let loaded = result.unwrap();
@@ -47,8 +49,10 @@ mod test_fetch_definition_from_path {
         write(&file_path, "not valid json {").unwrap();
 
         let client = reqwest::Client::new();
-        let source = crate::utils::source_utils::Source::parse(file_path.to_str().unwrap()).unwrap();
-        let result = crate::services::definitions_services::fetch_definition(&client, &source).await;
+        let source =
+            crate::utils::source_utils::Source::parse(file_path.to_str().unwrap()).unwrap();
+        let result =
+            crate::services::definitions_services::fetch_definition(&client, &source).await;
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -64,8 +68,10 @@ mod test_fetch_definition_from_path {
         write(&file_path, "").unwrap();
 
         let client = reqwest::Client::new();
-        let source = crate::utils::source_utils::Source::parse(file_path.to_str().unwrap()).unwrap();
-        let result = crate::services::definitions_services::fetch_definition(&client, &source).await;
+        let source =
+            crate::utils::source_utils::Source::parse(file_path.to_str().unwrap()).unwrap();
+        let result =
+            crate::services::definitions_services::fetch_definition(&client, &source).await;
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -103,7 +109,8 @@ mod test_fetch_definition_from_url {
         let url = format!("{}/definition.json", mock_server.uri());
         let source = crate::utils::source_utils::Source::parse(&url).unwrap();
 
-        let result = crate::services::definitions_services::fetch_definition(&client, &source).await;
+        let result =
+            crate::services::definitions_services::fetch_definition(&client, &source).await;
         assert!(result.is_ok());
 
         let loaded = result.unwrap();
@@ -125,7 +132,8 @@ mod test_fetch_definition_from_url {
         let url = format!("{}/notfound.json", mock_server.uri());
         let source = crate::utils::source_utils::Source::parse(&url).unwrap();
 
-        let result = crate::services::definitions_services::fetch_definition(&client, &source).await;
+        let result =
+            crate::services::definitions_services::fetch_definition(&client, &source).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("error status"));
     }
@@ -144,7 +152,8 @@ mod test_fetch_definition_from_url {
         let url = format!("{}/error.json", mock_server.uri());
         let source = crate::utils::source_utils::Source::parse(&url).unwrap();
 
-        let result = crate::services::definitions_services::fetch_definition(&client, &source).await;
+        let result =
+            crate::services::definitions_services::fetch_definition(&client, &source).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("error status"));
     }
@@ -163,7 +172,8 @@ mod test_fetch_definition_from_url {
         let url = format!("{}/invalid.json", mock_server.uri());
         let source = crate::utils::source_utils::Source::parse(&url).unwrap();
 
-        let result = crate::services::definitions_services::fetch_definition(&client, &source).await;
+        let result =
+            crate::services::definitions_services::fetch_definition(&client, &source).await;
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -176,7 +186,8 @@ mod test_fetch_definition_from_url {
         let client = reqwest::Client::new();
         let url = "http://localhost:59999/definition.json";
         let source = crate::utils::source_utils::Source::parse(url).unwrap();
-        let result = crate::services::definitions_services::fetch_definition(&client, &source).await;
+        let result =
+            crate::services::definitions_services::fetch_definition(&client, &source).await;
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -202,7 +213,8 @@ mod test_fetch_definition_from_url {
         let url = format!("{}/slow.json", mock_server.uri());
         let source = crate::utils::source_utils::Source::parse(&url).unwrap();
 
-        let result = crate::services::definitions_services::fetch_definition(&client, &source).await;
+        let result =
+            crate::services::definitions_services::fetch_definition(&client, &source).await;
         assert!(result.is_err());
     }
 
@@ -223,7 +235,8 @@ mod test_fetch_definition_from_url {
         let url = format!("{}/definition.json", mock_server.uri());
         let source = crate::utils::source_utils::Source::parse(&url).unwrap();
 
-        let result = crate::services::definitions_services::fetch_definition(&client, &source).await;
+        let result =
+            crate::services::definitions_services::fetch_definition(&client, &source).await;
         assert!(result.is_ok());
     }
 }

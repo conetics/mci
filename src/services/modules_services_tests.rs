@@ -30,7 +30,8 @@ mod test_fetch_module_from_path {
         write(&file_path, serde_json::to_string(&payload).unwrap()).unwrap();
 
         let client = reqwest::Client::new();
-        let source = crate::utils::source_utils::Source::parse(file_path.to_str().unwrap()).unwrap();
+        let source =
+            crate::utils::source_utils::Source::parse(file_path.to_str().unwrap()).unwrap();
         let result = crate::services::modules_services::fetch_module(&client, &source).await;
         assert!(result.is_ok());
 
@@ -44,10 +45,11 @@ mod test_fetch_module_from_path {
         let temp_dir = TempDir::new().unwrap();
         let file_path = temp_dir.path().join("invalid.json");
 
-        write(&file_path, "not valid json {" ).unwrap();
+        write(&file_path, "not valid json {").unwrap();
 
         let client = reqwest::Client::new();
-        let source = crate::utils::source_utils::Source::parse(file_path.to_str().unwrap()).unwrap();
+        let source =
+            crate::utils::source_utils::Source::parse(file_path.to_str().unwrap()).unwrap();
         let result = crate::services::modules_services::fetch_module(&client, &source).await;
         assert!(result.is_err());
         assert!(result
@@ -64,7 +66,8 @@ mod test_fetch_module_from_path {
         write(&file_path, "").unwrap();
 
         let client = reqwest::Client::new();
-        let source = crate::utils::source_utils::Source::parse(file_path.to_str().unwrap()).unwrap();
+        let source =
+            crate::utils::source_utils::Source::parse(file_path.to_str().unwrap()).unwrap();
         let result = crate::services::modules_services::fetch_module(&client, &source).await;
         assert!(result.is_err());
         assert!(result

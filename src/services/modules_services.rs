@@ -1,9 +1,8 @@
 use crate::{
     db::DbConnection,
     models::{Module, ModuleType, NewModule, UpdateModule},
-    s3,
     schema::modules,
-    utils::{source_utils, stream_utils},
+    utils::{s3_utils, source_utils, stream_utils},
 };
 use anyhow::{Context, Result};
 use aws_sdk_s3;
@@ -104,26 +103,7 @@ pub async fn delete_module(
     module_id: &str,
 ) -> Result<usize> {
     let prefix = format!("{}/", module_id);
-    let objects = s3_client
-        .list_objects_v2()
-        .bucket("modules")
-        .prefix(&prefix)
-        .send()
-        .await
-        .context("Failed to list objects for deletion in S3")?;
-
-    for obj in objects.contents() {
-        if let Some(key) = obj.key() {
-            s3_client
-                .delete_object()
-                .bucket("modules")
-                .key(key)
-                .send()
-                .await
-                .context(format!("Failed to delete S3 object: {}", key))?;
-        }
-    }
-
+    s3_utils::delete_objects_with_prefix(s3_client, "modules", &prefix).await?;
     Ok(diesel::delete(modules::table.find(module_id)).execute(conn)?)
 }
 
@@ -204,7 +184,7 @@ pub async fn create_module(
             .context("Failed to read module file from path")?,
     };
 
-    s3::put_stream(s3_client, "modules", &obj_key, body, Some(&payload.digest))
+    s3_utils::put_stream(s3_client, "modules", &obj_key, body, Some(&payload.digest))
         .await
         .context("Failed to upload module to S3")?;
 
@@ -281,7 +261,7 @@ pub async fn update_module_from_source(
             .context("Failed to read updated module file from path")?,
     };
 
-    s3::put_stream(
+    s3_utils::put_stream(
         s3_client,
         "modules",
         &obj_key,
@@ -300,7 +280,6 @@ pub async fn update_module_from_source(
 
     db_update_module(conn, module_id, &update_data).context("Failed to update module in database")
 }
-
 
 #[cfg(test)]
 #[path = "modules_services_tests.rs"]
