@@ -1,5 +1,4 @@
 use anyhow::Result;
-use aws_sdk_s3::operation::list_objects_v2::ListObjectsV2Output;
 use axum::{
     body::Body,
     http::{self, Request, StatusCode},
@@ -25,25 +24,22 @@ async fn setup_app() -> Result<(
     ContainerAsync<postgres::Postgres>,
     ContainerAsync<minio::MinIO>,
     Router,
+    aws_sdk_s3::Client,
 )> {
     let (pg_container, pool) = common::initialize_pg().await?;
     let (s3_container, s3_client) = common::initialize_s3().await?;
 
-    s3_client
-        .create_bucket()
-        .bucket("definitions")
-        .send()
-        .await?;
+    s3_client.create_bucket().bucket("definitions").send().await?;
     s3_client.create_bucket().bucket("modules").send().await?;
 
     let state = AppState {
         db_pool: pool,
         http_client: reqwest::Client::new(),
-        s3_client,
+        s3_client: s3_client.clone(),
     };
     let router = app(state);
 
-    Ok((pg_container, s3_container, router))
+    Ok((pg_container, s3_container, router, s3_client))
 }
 
 async fn read_body(response: axum::response::Response) -> Result<Bytes> {
@@ -53,7 +49,7 @@ async fn read_body(response: axum::response::Response) -> Result<Bytes> {
 
 #[tokio::test]
 async fn get_definitions_returns_empty_list() -> Result<()> {
-    let (pg_container, s3_container, app) = setup_app().await?;
+    let (pg_container, s3_container, app, _) = setup_app().await?;
 
     let response = app
         .clone()
@@ -81,7 +77,7 @@ async fn get_definitions_returns_empty_list() -> Result<()> {
 
 #[tokio::test]
 async fn create_get_update_delete_definition_flow() -> Result<()> {
-    let (pg_container, s3_container, app) = setup_app().await?;
+    let (pg_container, s3_container, app, s3_client) = setup_app().await?;
 
     let temp_dir = tempfile::TempDir::new()?;
     let file_path = temp_dir.path().join("def.json");
@@ -189,8 +185,7 @@ async fn create_get_update_delete_definition_flow() -> Result<()> {
         .await?;
     assert_eq!(gone_resp.status(), StatusCode::NOT_FOUND);
 
-    let (_, s3_client) = common::initialize_s3().await?;
-    let objects: ListObjectsV2Output = s3_client
+    let objects = s3_client
         .list_objects_v2()
         .bucket("definitions")
         .prefix("api-def-1/")
@@ -207,7 +202,7 @@ async fn create_get_update_delete_definition_flow() -> Result<()> {
 
 #[tokio::test]
 async fn update_definition_rejects_digest_without_file_url() -> Result<()> {
-    let (pg_container, s3_container, app) = setup_app().await?;
+    let (pg_container, s3_container, app, _) = setup_app().await?;
 
     let mock = MockServer::start().await;
     let file_body = b"some-content";
@@ -296,7 +291,7 @@ async fn update_definition_rejects_digest_without_file_url() -> Result<()> {
 
 #[tokio::test]
 async fn install_and_upgrade_definition_from_http_registry() -> Result<()> {
-    let (pg_container, s3_container, app) = setup_app().await?;
+    let (pg_container, s3_container, app, _) = setup_app().await?;
 
     let mock = MockServer::start().await;
     let def_v1_body = b"definition-v1-content";
@@ -398,7 +393,7 @@ async fn install_and_upgrade_definition_from_http_registry() -> Result<()> {
 
 #[tokio::test]
 async fn get_modules_returns_empty_list() -> Result<()> {
-    let (pg_container, s3_container, app) = setup_app().await?;
+    let (pg_container, s3_container, app, _) = setup_app().await?;
 
     let response = app
         .clone()
@@ -426,7 +421,7 @@ async fn get_modules_returns_empty_list() -> Result<()> {
 
 #[tokio::test]
 async fn create_get_update_delete_module_flow() -> Result<()> {
-    let (pg_container, s3_container, app) = setup_app().await?;
+    let (pg_container, s3_container, app, s3_client) = setup_app().await?;
 
     let temp_dir = tempfile::TempDir::new()?;
     let file_path = temp_dir.path().join("module.wasm");
@@ -532,13 +527,13 @@ async fn create_get_update_delete_module_flow() -> Result<()> {
                 .unwrap(),
         )
         .await?;
+
     assert_eq!(gone_resp.status(), StatusCode::NOT_FOUND);
 
-    let (_, s3_client) = common::initialize_s3().await?;
-    let objects: ListObjectsV2Output = s3_client
+    let objects = s3_client
         .list_objects_v2()
-        .bucket("modules")
-        .prefix("api-mod-1/")
+        .bucket("definitions")
+        .prefix("api-def-1/")
         .send()
         .await?;
 
@@ -552,7 +547,7 @@ async fn create_get_update_delete_module_flow() -> Result<()> {
 
 #[tokio::test]
 async fn update_module_rejects_digest_without_file_url() -> Result<()> {
-    let (pg_container, s3_container, app) = setup_app().await?;
+    let (pg_container, s3_container, app, _) = setup_app().await?;
 
     let mock = MockServer::start().await;
     let file_body = b"\0asm\x01\0\0\0module";
@@ -641,7 +636,7 @@ async fn update_module_rejects_digest_without_file_url() -> Result<()> {
 
 #[tokio::test]
 async fn install_and_upgrade_module_from_http_registry() -> Result<()> {
-    let (pg_container, s3_container, app) = setup_app().await?;
+    let (pg_container, s3_container, app, _) = setup_app().await?;
 
     let mock = MockServer::start().await;
     let mod_v1_body = b"\0asm\x01\0\0\0v1";
