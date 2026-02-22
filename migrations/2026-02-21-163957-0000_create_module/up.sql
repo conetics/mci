@@ -1,4 +1,4 @@
-CREATE TYPE module_type AS ENUM ("language", "sandbox", "interceptor", "proxy", "hook");
+CREATE TYPE module_type AS ENUM ('language', 'sandbox', 'interceptor', 'proxy', 'hook');
 
 CREATE TABLE modules (
     id VARCHAR(64) PRIMARY KEY NOT NULL,
