@@ -1,6 +1,6 @@
 use super::*;
 use http_body_util::BodyExt;
-use validator::Validate;
+use validator::{Validate, ValidationError};
 
 #[derive(Debug, Validate)]
 struct TestStruct {
@@ -8,6 +8,21 @@ struct TestStruct {
     name: String,
     #[validate(range(min = 18))]
     age: i32,
+}
+
+fn validate_schema(test: &SchemaTest) -> Result<(), ValidationError> {
+    if test.value.is_none() {
+        let mut error = ValidationError::new("missing_value");
+        error.message = Some("value required".into());
+        return Err(error);
+    }
+    Ok(())
+}
+
+#[derive(Debug, Validate)]
+#[validate(schema(function = "validate_schema"))]
+struct SchemaTest {
+    value: Option<String>,
 }
 
 #[test]
@@ -20,6 +35,15 @@ fn test_format_validation_errors_with_custom_messages() {
     let formatted = format_validation_errors(&errors);
 
     assert!(formatted.contains("name") || formatted.contains("age"));
+}
+
+#[test]
+fn test_format_validation_errors_includes_schema_errors() {
+    let test = SchemaTest { value: None };
+    let errors = test.validate().unwrap_err();
+    let formatted = format_validation_errors(&errors);
+
+    assert!(formatted.contains("value required"));
 }
 
 #[tokio::test]

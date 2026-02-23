@@ -32,6 +32,6 @@ COPY migrations ./migrations
 COPY diesel.toml ./diesel.toml
 # COPY certs ./certs
 
-EXPOSE 8080
+EXPOSE 7687
 
 CMD ["./mci"]

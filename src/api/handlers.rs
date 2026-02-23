@@ -97,7 +97,6 @@ pub async fn update_definition(
     Json(request): Json<UpdateDefinitionRequest>,
 ) -> Result<Json<Definition>, AppError> {
     request.validate()?;
-
     let update = request.into_changeset();
     let mut conn = state.db_pool.get()?;
 
@@ -213,7 +212,6 @@ pub async fn update_module(
     Json(request): Json<UpdateModuleRequest>,
 ) -> Result<Json<Module>, AppError> {
     request.validate()?;
-
     let update = request.into_changeset();
     let mut conn = state.db_pool.get()?;
 

@@ -108,7 +108,17 @@ pub struct UpdateDefinition {
 }
 
 fn validate_update_request(req: &UpdateDefinitionRequest) -> Result<(), ValidationError> {
-    validate_digest_requires_file_url(&req.digest, &req.file_url)
+    if req.digest.is_some() {
+        let mut error = ValidationError::new("digest_not_updatable");
+        error.message = Some("digest cannot be updated without upgrading the definition".into());
+        return Err(error);
+    }
+    if req.file_url.is_some() {
+        let mut error = ValidationError::new("file_url_not_updatable");
+        error.message = Some("file_url cannot be updated without upgrading the definition".into());
+        return Err(error);
+    }
+    Ok(())
 }
 
 #[derive(Debug, Deserialize, Validate)]
@@ -239,7 +249,17 @@ pub struct UpdateModule {
 }
 
 fn validate_module_update_request(req: &UpdateModuleRequest) -> Result<(), ValidationError> {
-    validate_digest_requires_file_url(&req.digest, &req.file_url)
+    if req.digest.is_some() {
+        let mut error = ValidationError::new("digest_not_updatable");
+        error.message = Some("digest cannot be updated without upgrading the module".into());
+        return Err(error);
+    }
+    if req.file_url.is_some() {
+        let mut error = ValidationError::new("file_url_not_updatable");
+        error.message = Some("file_url cannot be updated without upgrading the module".into());
+        return Err(error);
+    }
+    Ok(())
 }
 
 #[derive(Debug, Deserialize, Validate)]

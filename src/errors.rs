@@ -32,9 +32,7 @@ impl fmt::Display for AppError {
             AppError::Validation(err) => write!(f, "Validation error: {}", err),
 
             AppError::UnsupportedScheme(scheme) => write!(f, "Unsupported scheme: '{}'", scheme),
-            AppError::InvalidSource(msg) => {
-                write!(f, "Invalid  source: {}", msg)
-            }
+            AppError::InvalidSource(msg) => write!(f, "Invalid source: {}", msg),
 
             AppError::Internal(err) => write!(f, "Internal error: {}", err),
             AppError::Database(err) => write!(f, "Database error: {}", err),
@@ -157,6 +155,15 @@ fn format_validation_errors(errors: &ValidationErrors) -> String {
                 .unwrap_or_else(|| format!("Invalid value for field '{}'", field));
             messages.push(message);
         }
+    }
+
+    for error in errors.schema_errors() {
+        let message = error
+            .message
+            .as_ref()
+            .map(|m| m.to_string())
+            .unwrap_or_else(|| "Invalid request".to_string());
+        messages.push(message);
     }
 
     messages.join(", ")
