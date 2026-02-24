@@ -39,18 +39,6 @@ fn validate_digest(digest: &str) -> Result<(), ValidationError> {
     }
 }
 
-fn validate_digest_requires_file_url(
-    digest: &Option<String>,
-    file_url: &Option<String>,
-) -> Result<(), ValidationError> {
-    if digest.is_some() && file_url.is_none() {
-        let mut error = ValidationError::new("digest_requires_file_url");
-        error.message = Some("digest cannot be updated without also providing file_url".into());
-        return Err(error);
-    }
-    Ok(())
-}
-
 #[derive(Queryable, Selectable, Serialize, Deserialize)]
 #[diesel(table_name = definitions)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
@@ -107,22 +95,8 @@ pub struct UpdateDefinition {
     pub source_url: Option<String>,
 }
 
-fn validate_update_request(req: &UpdateDefinitionRequest) -> Result<(), ValidationError> {
-    if req.digest.is_some() {
-        let mut error = ValidationError::new("digest_not_updatable");
-        error.message = Some("digest cannot be updated without upgrading the definition".into());
-        return Err(error);
-    }
-    if req.file_url.is_some() {
-        let mut error = ValidationError::new("file_url_not_updatable");
-        error.message = Some("file_url cannot be updated without upgrading the definition".into());
-        return Err(error);
-    }
-    Ok(())
-}
-
 #[derive(Debug, Deserialize, Validate)]
-#[validate(schema(function = "validate_update_request"))]
+#[serde(deny_unknown_fields)]
 pub struct UpdateDefinitionRequest {
     pub is_enabled: Option<bool>,
 
@@ -136,25 +110,25 @@ pub struct UpdateDefinitionRequest {
     pub description: Option<String>,
 
     #[validate(url)]
-    pub file_url: Option<String>,
-
-    #[validate(custom(function = "validate_digest"))]
-    pub digest: Option<String>,
-
-    #[validate(url)]
     pub source_url: Option<String>,
+}
+
+impl From<UpdateDefinitionRequest> for UpdateDefinition {
+    fn from(req: UpdateDefinitionRequest) -> Self {
+        UpdateDefinition {
+            is_enabled: req.is_enabled,
+            type_: req.type_,
+            name: req.name,
+            description: req.description,
+            digest: None,
+            source_url: req.source_url,
+        }
+    }
 }
 
 impl UpdateDefinitionRequest {
     pub fn into_changeset(self) -> UpdateDefinition {
-        UpdateDefinition {
-            is_enabled: self.is_enabled,
-            type_: self.type_,
-            name: self.name,
-            description: self.description,
-            digest: self.digest,
-            source_url: self.source_url,
-        }
+        self.into()
     }
 }
 
@@ -248,22 +222,8 @@ pub struct UpdateModule {
     pub source_url: Option<String>,
 }
 
-fn validate_module_update_request(req: &UpdateModuleRequest) -> Result<(), ValidationError> {
-    if req.digest.is_some() {
-        let mut error = ValidationError::new("digest_not_updatable");
-        error.message = Some("digest cannot be updated without upgrading the module".into());
-        return Err(error);
-    }
-    if req.file_url.is_some() {
-        let mut error = ValidationError::new("file_url_not_updatable");
-        error.message = Some("file_url cannot be updated without upgrading the module".into());
-        return Err(error);
-    }
-    Ok(())
-}
-
 #[derive(Debug, Deserialize, Validate)]
-#[validate(schema(function = "validate_module_update_request"))]
+#[serde(deny_unknown_fields)]
 pub struct UpdateModuleRequest {
     pub is_enabled: Option<bool>,
 
@@ -274,24 +234,24 @@ pub struct UpdateModuleRequest {
     pub description: Option<String>,
 
     #[validate(url)]
-    pub file_url: Option<String>,
-
-    #[validate(custom(function = "validate_digest"))]
-    pub digest: Option<String>,
-
-    #[validate(url)]
     pub source_url: Option<String>,
+}
+
+impl From<UpdateModuleRequest> for UpdateModule {
+    fn from(req: UpdateModuleRequest) -> Self {
+        UpdateModule {
+            is_enabled: req.is_enabled,
+            name: req.name,
+            description: req.description,
+            digest: None,
+            source_url: req.source_url,
+        }
+    }
 }
 
 impl UpdateModuleRequest {
     pub fn into_changeset(self) -> UpdateModule {
-        UpdateModule {
-            is_enabled: self.is_enabled,
-            name: self.name,
-            description: self.description,
-            digest: self.digest,
-            source_url: self.source_url,
-        }
+        self.into()
     }
 }
 

@@ -273,8 +273,6 @@ pub async fn update_module_from_source(
 
     let update_data = UpdateModule {
         digest: Some(remote_payload.digest),
-        name: Some(remote_payload.name),
-        description: Some(remote_payload.description),
         ..Default::default()
     };
 

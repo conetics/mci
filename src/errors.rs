@@ -157,15 +157,6 @@ fn format_validation_errors(errors: &ValidationErrors) -> String {
         }
     }
 
-    for error in errors.schema_errors() {
-        let message = error
-            .message
-            .as_ref()
-            .map(|m| m.to_string())
-            .unwrap_or_else(|| "Invalid request".to_string());
-        messages.push(message);
-    }
-
     messages.join(", ")
 }
 

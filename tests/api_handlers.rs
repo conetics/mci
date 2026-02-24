@@ -205,7 +205,7 @@ async fn create_get_update_delete_definition_flow() -> Result<()> {
 }
 
 #[tokio::test]
-async fn update_definition_rejects_digest_without_file_url() -> Result<()> {
+async fn update_definition_rejects_digest_and_file_url_fields() -> Result<()> {
     let (pg_container, s3_container, app, _) = setup_app().await?;
 
     let mock = MockServer::start().await;
@@ -241,23 +241,23 @@ async fn update_definition_rejects_digest_without_file_url() -> Result<()> {
 
     assert_eq!(create_resp.status(), StatusCode::CREATED);
 
-    let bad_patch = json!({
+    let digest_patch = json!({
         "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     });
 
-    let bad_resp = app
+    let digest_resp = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("PATCH")
                 .uri("/definitions/upd-test")
                 .header(http::header::CONTENT_TYPE, "application/json")
-                .body(Body::from(serde_json::to_vec(&bad_patch)?))
+                .body(Body::from(serde_json::to_vec(&digest_patch)?))
                 .unwrap(),
         )
         .await?;
 
-    assert_eq!(bad_resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(digest_resp.status(), StatusCode::BAD_REQUEST);
 
     let new_body = b"new-content";
     let new_digest = format!("sha256:{:x}", Sha256::digest(new_body));
@@ -268,24 +268,24 @@ async fn update_definition_rejects_digest_without_file_url() -> Result<()> {
         .mount(&mock)
         .await;
 
-    let good_patch = json!({
+    let file_url_patch = json!({
         "file_url": format!("{}/file2.json", mock.uri()),
         "digest": new_digest,
     });
 
-    let good_resp = app
+    let file_url_resp = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("PATCH")
                 .uri("/definitions/upd-test")
                 .header(http::header::CONTENT_TYPE, "application/json")
-                .body(Body::from(serde_json::to_vec(&good_patch)?))
+                .body(Body::from(serde_json::to_vec(&file_url_patch)?))
                 .unwrap(),
         )
         .await?;
 
-    assert_eq!(good_resp.status(), StatusCode::OK);
+    assert_eq!(file_url_resp.status(), StatusCode::BAD_REQUEST);
 
     pg_container.stop().await.ok();
     s3_container.stop().await.ok();
@@ -550,7 +550,7 @@ async fn create_get_update_delete_module_flow() -> Result<()> {
 }
 
 #[tokio::test]
-async fn update_module_rejects_digest_without_file_url() -> Result<()> {
+async fn update_module_rejects_digest_and_file_url_fields() -> Result<()> {
     let (pg_container, s3_container, app, _) = setup_app().await?;
 
     let mock = MockServer::start().await;
@@ -586,23 +586,23 @@ async fn update_module_rejects_digest_without_file_url() -> Result<()> {
 
     assert_eq!(create_resp.status(), StatusCode::CREATED);
 
-    let bad_patch = json!({
+    let digest_patch = json!({
         "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     });
 
-    let bad_resp = app
+    let digest_resp = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("PATCH")
                 .uri("/modules/mod-upd")
                 .header(http::header::CONTENT_TYPE, "application/json")
-                .body(Body::from(serde_json::to_vec(&bad_patch)?))
+                .body(Body::from(serde_json::to_vec(&digest_patch)?))
                 .unwrap(),
         )
         .await?;
 
-    assert_eq!(bad_resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(digest_resp.status(), StatusCode::BAD_REQUEST);
 
     let new_body = b"\0asm\x01\0\0\0module2";
     let new_digest = format!("sha256:{:x}", Sha256::digest(new_body));
@@ -613,24 +613,24 @@ async fn update_module_rejects_digest_without_file_url() -> Result<()> {
         .mount(&mock)
         .await;
 
-    let good_patch = json!({
+    let file_url_patch = json!({
         "file_url": format!("{}/module2.wasm", mock.uri()),
         "digest": new_digest,
     });
 
-    let good_resp = app
+    let file_url_resp = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("PATCH")
                 .uri("/modules/mod-upd")
                 .header(http::header::CONTENT_TYPE, "application/json")
-                .body(Body::from(serde_json::to_vec(&good_patch)?))
+                .body(Body::from(serde_json::to_vec(&file_url_patch)?))
                 .unwrap(),
         )
         .await?;
 
-    assert_eq!(good_resp.status(), StatusCode::OK);
+    assert_eq!(file_url_resp.status(), StatusCode::BAD_REQUEST);
 
     pg_container.stop().await.ok();
     s3_container.stop().await.ok();

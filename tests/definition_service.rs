@@ -4,7 +4,7 @@ use mci::{
     models::{Definition, NewDefinition},
     schema::definitions::dsl::*,
     services::definitions_services::{
-        create_definition, create_definition_from_registry, list_definitions,
+        create_definition, create_definition_from_registry, list_definitions, update_definition,
         update_definition_from_source, DefinitionFilter, DefinitionPayload, SortBy, SortOrder,
     },
 };
@@ -381,12 +381,80 @@ async fn update_definition_from_source_updates_when_digest_changes() -> Result<(
     .await??;
 
     assert_eq!(updated.digest, new_digest);
-    assert_eq!(updated.name, "New Name");
-    assert_eq!(updated.description, "New Desc");
-    assert_eq!(updated.type_, "new-type");
+    assert_eq!(updated.name, "Old Name");
+    assert_eq!(updated.description, "Old Desc");
+    assert_eq!(updated.type_, "old-type");
 
     pg_container.stop().await.ok();
     s3_container.stop().await.ok();
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn update_definition_via_request_strips_digest() -> Result<()> {
+    use mci::models::UpdateDefinitionRequest;
+
+    let (pg_container, pool) = common::initialize_pg().await?;
+
+    let old_digest = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
+
+    tokio::task::spawn_blocking({
+        let pool = pool.clone();
+        move || -> Result<()> {
+            let mut conn = pool.get()?;
+            diesel::insert_into(definitions)
+                .values(&NewDefinition {
+                    id: "def-update-digest".into(),
+                    type_: "old-type".into(),
+                    name: "Old Name".into(),
+                    description: "Old Desc".into(),
+                    digest: old_digest.into(),
+                    source_url: Some("http://example.com/def.json".into()),
+                })
+                .execute(&mut conn)?;
+            Ok(())
+        }
+    })
+    .await??;
+
+    let request = UpdateDefinitionRequest {
+        is_enabled: None,
+        type_: None,
+        name: Some("New Name".into()),
+        description: None,
+        source_url: None,
+    };
+    let update = request.into_changeset();
+
+    assert_eq!(update.digest, None);
+
+    tokio::task::spawn_blocking({
+        let pool = pool.clone();
+        move || -> Result<()> {
+            let mut conn = pool.get()?;
+            update_definition(&mut conn, "def-update-digest", &update)?;
+            Ok(())
+        }
+    })
+    .await??;
+
+    let updated = tokio::task::spawn_blocking({
+        let pool = pool.clone();
+        move || -> Result<Definition> {
+            let mut conn = pool.get()?;
+            definitions
+                .find("def-update-digest")
+                .first(&mut conn)
+                .map_err(Into::into)
+        }
+    })
+    .await??;
+
+    assert_eq!(updated.name, "New Name");
+    assert_eq!(updated.digest, old_digest);
+
+    pg_container.stop().await.ok();
 
     Ok(())
 }

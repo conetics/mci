@@ -284,10 +284,7 @@ pub async fn update_definition_from_source(
     .context("Failed to upload updated definition to S3")?;
 
     let update_data = UpdateDefinition {
-        type_: Some(remote_payload.r#type),
         digest: Some(remote_payload.digest),
-        name: Some(remote_payload.name),
-        description: Some(remote_payload.description),
         ..Default::default()
     };
 

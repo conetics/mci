@@ -4,8 +4,8 @@ use mci::{
     models::{Module, ModuleType, NewModule},
     schema::modules::dsl::*,
     services::modules_services::{
-        create_module, create_module_from_registry, list_modules, update_module_from_source,
-        ModuleFilter, ModulePayload, SortBy, SortOrder,
+        create_module, create_module_from_registry, list_modules, update_module,
+        update_module_from_source, ModuleFilter, ModulePayload, SortBy, SortOrder,
     },
 };
 use sha2::{Digest, Sha256};
@@ -346,12 +346,79 @@ async fn update_module_from_source_updates_when_digest_changes() -> Result<()> {
     .await??;
 
     assert_eq!(updated.digest, new_digest);
-    assert_eq!(updated.name, "New Name");
-    assert_eq!(updated.description, "New Desc");
+    assert_eq!(updated.name, "Old Name");
+    assert_eq!(updated.description, "Old Desc");
     assert_eq!(updated.type_, ModuleType::Proxy);
 
     pg_container.stop().await.ok();
     s3_container.stop().await.ok();
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn update_module_via_request_strips_digest() -> Result<()> {
+    use mci::models::UpdateModuleRequest;
+
+    let (pg_container, pool) = common::initialize_pg().await?;
+
+    let old_digest = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
+
+    tokio::task::spawn_blocking({
+        let pool = pool.clone();
+        move || -> Result<()> {
+            let mut conn = pool.get()?;
+            diesel::insert_into(modules)
+                .values(&NewModule {
+                    id: "mod-update-digest".into(),
+                    type_: ModuleType::Proxy,
+                    name: "Old Name".into(),
+                    description: "Old Desc".into(),
+                    digest: old_digest.into(),
+                    source_url: Some("http://example.com/mod.json".into()),
+                })
+                .execute(&mut conn)?;
+            Ok(())
+        }
+    })
+    .await??;
+
+    let request = UpdateModuleRequest {
+        is_enabled: None,
+        name: Some("New Name".into()),
+        description: None,
+        source_url: None,
+    };
+    let update = request.into_changeset();
+
+    assert_eq!(update.digest, None);
+
+    tokio::task::spawn_blocking({
+        let pool = pool.clone();
+        move || -> Result<()> {
+            let mut conn = pool.get()?;
+            update_module(&mut conn, "mod-update-digest", &update)?;
+            Ok(())
+        }
+    })
+    .await??;
+
+    let updated = tokio::task::spawn_blocking({
+        let pool = pool.clone();
+        move || -> Result<Module> {
+            let mut conn = pool.get()?;
+            modules
+                .find("mod-update-digest")
+                .first(&mut conn)
+                .map_err(Into::into)
+        }
+    })
+    .await??;
+
+    assert_eq!(updated.name, "New Name");
+    assert_eq!(updated.digest, old_digest);
+
+    pg_container.stop().await.ok();
 
     Ok(())
 }
