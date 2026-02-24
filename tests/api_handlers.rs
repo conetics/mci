@@ -205,7 +205,7 @@ async fn create_get_update_delete_definition_flow() -> Result<()> {
 }
 
 #[tokio::test]
-async fn update_definition_rejects_digest_and_file_url_fields() -> Result<()> {
+async fn update_definition_rejects_digest() -> Result<()> {
     let (pg_container, s3_container, app, _) = setup_app().await?;
 
     let mock = MockServer::start().await;
@@ -257,7 +257,7 @@ async fn update_definition_rejects_digest_and_file_url_fields() -> Result<()> {
         )
         .await?;
 
-    assert_eq!(digest_resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(digest_resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
 
     let new_body = b"new-content";
     let new_digest = format!("sha256:{:x}", Sha256::digest(new_body));
@@ -285,7 +285,7 @@ async fn update_definition_rejects_digest_and_file_url_fields() -> Result<()> {
         )
         .await?;
 
-    assert_eq!(file_url_resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(file_url_resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
 
     pg_container.stop().await.ok();
     s3_container.stop().await.ok();
@@ -386,8 +386,8 @@ async fn install_and_upgrade_definition_from_http_registry() -> Result<()> {
     let upgraded: Definition = serde_json::from_slice(&upgrade_body)?;
 
     assert_eq!(upgraded.digest, digest_v2);
-    assert_eq!(upgraded.name, "Registry Name v2");
-    assert_eq!(upgraded.description, "From registry v2");
+    assert_eq!(upgraded.name, "Registry Name");
+    assert_eq!(upgraded.description, "From registry");
 
     pg_container.stop().await.ok();
     s3_container.stop().await.ok();
@@ -550,7 +550,7 @@ async fn create_get_update_delete_module_flow() -> Result<()> {
 }
 
 #[tokio::test]
-async fn update_module_rejects_digest_and_file_url_fields() -> Result<()> {
+async fn update_module_rejects_digest() -> Result<()> {
     let (pg_container, s3_container, app, _) = setup_app().await?;
 
     let mock = MockServer::start().await;
@@ -602,7 +602,7 @@ async fn update_module_rejects_digest_and_file_url_fields() -> Result<()> {
         )
         .await?;
 
-    assert_eq!(digest_resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(digest_resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
 
     let new_body = b"\0asm\x01\0\0\0module2";
     let new_digest = format!("sha256:{:x}", Sha256::digest(new_body));
@@ -630,7 +630,7 @@ async fn update_module_rejects_digest_and_file_url_fields() -> Result<()> {
         )
         .await?;
 
-    assert_eq!(file_url_resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(file_url_resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
 
     pg_container.stop().await.ok();
     s3_container.stop().await.ok();
@@ -731,8 +731,8 @@ async fn install_and_upgrade_module_from_http_registry() -> Result<()> {
     let upgraded: Module = serde_json::from_slice(&upgrade_body)?;
 
     assert_eq!(upgraded.digest, digest_v2);
-    assert_eq!(upgraded.name, "Registry Module v2");
-    assert_eq!(upgraded.description, "Module from registry v2");
+    assert_eq!(upgraded.name, "Registry Module");
+    assert_eq!(upgraded.description, "Module from registry");
     assert!(matches!(upgraded.type_, ModuleType::Interceptor));
 
     pg_container.stop().await.ok();
