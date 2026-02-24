@@ -1,4 +1,5 @@
 use anyhow::Result;
+use aws_smithy_types::byte_stream::ByteStream;
 use axum::{
     body::Body,
     http::{self, Request, StatusCode},
@@ -11,7 +12,7 @@ use mci::{
     models::{Definition, Module, ModuleType},
     AppState,
 };
-use serde_json::json;
+use serde_json::{json, Value as JsonValue};
 use sha2::{Digest, Sha256};
 use testcontainers_modules::{minio, postgres, testcontainers::ContainerAsync};
 use tower::ServiceExt;
@@ -35,6 +36,16 @@ async fn setup_app() -> Result<(
         .send()
         .await?;
     s3_client.create_bucket().bucket("modules").send().await?;
+    s3_client
+        .create_bucket()
+        .bucket("definition-configurations")
+        .send()
+        .await?;
+    s3_client
+        .create_bucket()
+        .bucket("module-configurations")
+        .send()
+        .await?;
 
     let state = AppState {
         db_pool: pool,
@@ -738,5 +749,467 @@ async fn install_and_upgrade_module_from_http_registry() -> Result<()> {
     pg_container.stop().await.ok();
     s3_container.stop().await.ok();
 
+    Ok(())
+}
+
+// --- Definition configuration handler tests ---
+
+#[tokio::test]
+async fn definition_configuration_schema_get() -> Result<()> {
+    let (pg_container, s3_container, app, s3_client) = setup_app().await?;
+
+    let schema = json!({
+        "type": "object",
+        "properties": { "enabled": { "type": "boolean" } },
+        "required": ["enabled"],
+        "additionalProperties": false
+    });
+
+    s3_client
+        .put_object()
+        .bucket("definition-configurations")
+        .key("cfg-def-1/configuration.schema.json")
+        .body(ByteStream::from(serde_json::to_vec(&schema)?))
+        .send()
+        .await?;
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/definitions/cfg-def-1/configuration/schema")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await?;
+
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = read_body(resp).await?;
+    let returned: JsonValue = serde_json::from_slice(&body)?;
+    assert_eq!(returned, schema);
+
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
+    Ok(())
+}
+
+#[tokio::test]
+async fn definition_configuration_put_get_delete_flow() -> Result<()> {
+    let (pg_container, s3_container, app, s3_client) = setup_app().await?;
+
+    let schema = json!({
+        "type": "object",
+        "properties": {
+            "enabled": { "type": "boolean" },
+            "name": { "type": "string" }
+        },
+        "required": ["enabled"],
+        "additionalProperties": false
+    });
+
+    s3_client
+        .put_object()
+        .bucket("definition-configurations")
+        .key("cfg-def-2/configuration.schema.json")
+        .body(ByteStream::from(serde_json::to_vec(&schema)?))
+        .send()
+        .await?;
+
+    // PUT valid configuration
+    let config = json!({ "enabled": true, "name": "hello" });
+
+    let put_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/definitions/cfg-def-2/configuration")
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&config)?))
+                .unwrap(),
+        )
+        .await?;
+
+    assert_eq!(put_resp.status(), StatusCode::NO_CONTENT);
+
+    // GET configuration returns config + validation
+    let get_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/definitions/cfg-def-2/configuration")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await?;
+
+    assert_eq!(get_resp.status(), StatusCode::OK);
+
+    let get_body = read_body(get_resp).await?;
+    let result: JsonValue = serde_json::from_slice(&get_body)?;
+
+    assert_eq!(result["configuration"], config);
+    assert_eq!(result["validation"]["valid"], json!(true));
+
+    // DELETE configuration
+    let del_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/definitions/cfg-def-2/configuration")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await?;
+
+    assert_eq!(del_resp.status(), StatusCode::NO_CONTENT);
+
+    // Verify objects are gone
+    let listing = s3_client
+        .list_objects_v2()
+        .bucket("definition-configurations")
+        .prefix("cfg-def-2/")
+        .send()
+        .await?;
+    assert!(listing.contents().is_empty());
+
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
+    Ok(())
+}
+
+#[tokio::test]
+async fn definition_configuration_put_rejects_invalid() -> Result<()> {
+    let (pg_container, s3_container, app, s3_client) = setup_app().await?;
+
+    let schema = json!({
+        "type": "object",
+        "properties": { "enabled": { "type": "boolean" } },
+        "required": ["enabled"],
+        "additionalProperties": false
+    });
+
+    s3_client
+        .put_object()
+        .bucket("definition-configurations")
+        .key("cfg-def-3/configuration.schema.json")
+        .body(ByteStream::from(serde_json::to_vec(&schema)?))
+        .send()
+        .await?;
+
+    let invalid_config = json!({ "enabled": "not-a-bool" });
+
+    let put_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/definitions/cfg-def-3/configuration")
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&invalid_config)?))
+                .unwrap(),
+        )
+        .await?;
+
+    assert_eq!(put_resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+    // Verify nothing was stored
+    let listing = s3_client
+        .list_objects_v2()
+        .bucket("definition-configurations")
+        .prefix("cfg-def-3/configuration.json")
+        .send()
+        .await?;
+    assert!(listing.contents().is_empty());
+
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
+    Ok(())
+}
+
+#[tokio::test]
+async fn definition_configuration_get_returns_validation_errors() -> Result<()> {
+    let (pg_container, s3_container, app, s3_client) = setup_app().await?;
+
+    let schema = json!({
+        "type": "object",
+        "properties": { "enabled": { "type": "boolean" } },
+        "required": ["enabled"],
+        "additionalProperties": false
+    });
+
+    // Seed a config that doesn't match the schema (simulating drift)
+    let bad_config = json!({ "enabled": 42 });
+
+    s3_client
+        .put_object()
+        .bucket("definition-configurations")
+        .key("cfg-def-4/configuration.schema.json")
+        .body(ByteStream::from(serde_json::to_vec(&schema)?))
+        .send()
+        .await?;
+
+    s3_client
+        .put_object()
+        .bucket("definition-configurations")
+        .key("cfg-def-4/configuration.json")
+        .body(ByteStream::from(serde_json::to_vec(&bad_config)?))
+        .send()
+        .await?;
+
+    let get_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/definitions/cfg-def-4/configuration")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await?;
+
+    assert_eq!(get_resp.status(), StatusCode::OK);
+
+    let body = read_body(get_resp).await?;
+    let result: JsonValue = serde_json::from_slice(&body)?;
+
+    assert_eq!(result["configuration"], bad_config);
+    assert_eq!(result["validation"]["valid"], json!(false));
+
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
+    Ok(())
+}
+
+// --- Module configuration handler tests ---
+
+#[tokio::test]
+async fn module_configuration_schema_get() -> Result<()> {
+    let (pg_container, s3_container, app, s3_client) = setup_app().await?;
+
+    let schema = json!({
+        "type": "object",
+        "properties": { "port": { "type": "integer" } },
+        "required": ["port"]
+    });
+
+    s3_client
+        .put_object()
+        .bucket("module-configurations")
+        .key("cfg-mod-1/configuration.schema.json")
+        .body(ByteStream::from(serde_json::to_vec(&schema)?))
+        .send()
+        .await?;
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/modules/cfg-mod-1/configuration/schema")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await?;
+
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = read_body(resp).await?;
+    let returned: JsonValue = serde_json::from_slice(&body)?;
+    assert_eq!(returned, schema);
+
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
+    Ok(())
+}
+
+#[tokio::test]
+async fn module_configuration_put_get_delete_flow() -> Result<()> {
+    let (pg_container, s3_container, app, s3_client) = setup_app().await?;
+
+    let schema = json!({
+        "type": "object",
+        "properties": {
+            "port": { "type": "integer" },
+            "host": { "type": "string" }
+        },
+        "required": ["port"],
+        "additionalProperties": false
+    });
+
+    s3_client
+        .put_object()
+        .bucket("module-configurations")
+        .key("cfg-mod-2/configuration.schema.json")
+        .body(ByteStream::from(serde_json::to_vec(&schema)?))
+        .send()
+        .await?;
+
+    // PUT valid configuration
+    let config = json!({ "port": 8080, "host": "localhost" });
+
+    let put_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/modules/cfg-mod-2/configuration")
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&config)?))
+                .unwrap(),
+        )
+        .await?;
+
+    assert_eq!(put_resp.status(), StatusCode::NO_CONTENT);
+
+    // GET returns config + validation
+    let get_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/modules/cfg-mod-2/configuration")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await?;
+
+    assert_eq!(get_resp.status(), StatusCode::OK);
+
+    let get_body = read_body(get_resp).await?;
+    let result: JsonValue = serde_json::from_slice(&get_body)?;
+
+    assert_eq!(result["configuration"], config);
+    assert_eq!(result["validation"]["valid"], json!(true));
+
+    // DELETE
+    let del_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/modules/cfg-mod-2/configuration")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await?;
+
+    assert_eq!(del_resp.status(), StatusCode::NO_CONTENT);
+
+    let listing = s3_client
+        .list_objects_v2()
+        .bucket("module-configurations")
+        .prefix("cfg-mod-2/")
+        .send()
+        .await?;
+    assert!(listing.contents().is_empty());
+
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
+    Ok(())
+}
+
+#[tokio::test]
+async fn module_configuration_put_rejects_invalid() -> Result<()> {
+    let (pg_container, s3_container, app, s3_client) = setup_app().await?;
+
+    let schema = json!({
+        "type": "object",
+        "properties": { "port": { "type": "integer" } },
+        "required": ["port"],
+        "additionalProperties": false
+    });
+
+    s3_client
+        .put_object()
+        .bucket("module-configurations")
+        .key("cfg-mod-3/configuration.schema.json")
+        .body(ByteStream::from(serde_json::to_vec(&schema)?))
+        .send()
+        .await?;
+
+    let invalid_config = json!({ "port": "not-a-number" });
+
+    let put_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/modules/cfg-mod-3/configuration")
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&invalid_config)?))
+                .unwrap(),
+        )
+        .await?;
+
+    assert_eq!(put_resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+    let listing = s3_client
+        .list_objects_v2()
+        .bucket("module-configurations")
+        .prefix("cfg-mod-3/configuration.json")
+        .send()
+        .await?;
+    assert!(listing.contents().is_empty());
+
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
+    Ok(())
+}
+
+#[tokio::test]
+async fn module_configuration_get_returns_validation_errors() -> Result<()> {
+    let (pg_container, s3_container, app, s3_client) = setup_app().await?;
+
+    let schema = json!({
+        "type": "object",
+        "properties": { "port": { "type": "integer" } },
+        "required": ["port"],
+        "additionalProperties": false
+    });
+
+    let bad_config = json!({ "port": "wrong" });
+
+    s3_client
+        .put_object()
+        .bucket("module-configurations")
+        .key("cfg-mod-4/configuration.schema.json")
+        .body(ByteStream::from(serde_json::to_vec(&schema)?))
+        .send()
+        .await?;
+
+    s3_client
+        .put_object()
+        .bucket("module-configurations")
+        .key("cfg-mod-4/configuration.json")
+        .body(ByteStream::from(serde_json::to_vec(&bad_config)?))
+        .send()
+        .await?;
+
+    let get_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/modules/cfg-mod-4/configuration")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await?;
+
+    assert_eq!(get_resp.status(), StatusCode::OK);
+
+    let body = read_body(get_resp).await?;
+    let result: JsonValue = serde_json::from_slice(&body)?;
+
+    assert_eq!(result["configuration"], bad_config);
+    assert_eq!(result["validation"]["valid"], json!(false));
+
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
     Ok(())
 }

@@ -2,6 +2,7 @@ use crate::{
     errors::AppError,
     models::{Definition, Module, UpdateDefinitionRequest, UpdateModuleRequest},
     services::{
+        configuration_services::{self, ConfigurationTarget},
         definitions_services::{self, DefinitionFilter, DefinitionPayload},
         modules_services::{self, ModuleFilter, ModulePayload},
     },
@@ -13,6 +14,7 @@ use axum::{
     Json,
 };
 use serde::Deserialize;
+use serde_json::Value as JsonValue;
 use validator::Validate;
 
 #[derive(Debug, Deserialize, Validate)]
@@ -261,4 +263,132 @@ pub async fn upgrade_module(
     .await?;
 
     Ok(Json(module))
+}
+
+pub async fn get_definition_configuration_schema(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<JsonValue>, AppError> {
+    let schema =
+        configuration_services::get_schema(&state.s3_client, ConfigurationTarget::Definition, &id)
+            .await?;
+
+    Ok(Json(schema))
+}
+
+pub async fn get_definition_configuration(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<JsonValue>, AppError> {
+    let config = configuration_services::get_configuration(
+        &state.s3_client,
+        ConfigurationTarget::Definition,
+        &id,
+    )
+    .await?;
+
+    let schema =
+        configuration_services::get_schema(&state.s3_client, ConfigurationTarget::Definition, &id)
+            .await?;
+
+    let validation = configuration_services::validate_configuration(&schema, &config)?;
+
+    Ok(Json(serde_json::json!({
+        "configuration": config,
+        "validation": validation,
+    })))
+}
+
+pub async fn put_definition_configuration(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<JsonValue>,
+) -> Result<StatusCode, AppError> {
+    configuration_services::put_configuration(
+        &state.s3_client,
+        ConfigurationTarget::Definition,
+        &id,
+        &body,
+    )
+    .await?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn delete_definition_configuration(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    configuration_services::delete_configuration(
+        &state.s3_client,
+        ConfigurationTarget::Definition,
+        &id,
+    )
+    .await?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn get_module_configuration_schema(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<JsonValue>, AppError> {
+    let schema =
+        configuration_services::get_schema(&state.s3_client, ConfigurationTarget::Module, &id)
+            .await?;
+
+    Ok(Json(schema))
+}
+
+pub async fn get_module_configuration(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<JsonValue>, AppError> {
+    let config = configuration_services::get_configuration(
+        &state.s3_client,
+        ConfigurationTarget::Module,
+        &id,
+    )
+    .await?;
+
+    let schema =
+        configuration_services::get_schema(&state.s3_client, ConfigurationTarget::Module, &id)
+            .await?;
+
+    let validation = configuration_services::validate_configuration(&schema, &config)?;
+
+    Ok(Json(serde_json::json!({
+        "configuration": config,
+        "validation": validation,
+    })))
+}
+
+pub async fn put_module_configuration(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<JsonValue>,
+) -> Result<StatusCode, AppError> {
+    configuration_services::put_configuration(
+        &state.s3_client,
+        ConfigurationTarget::Module,
+        &id,
+        &body,
+    )
+    .await?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn delete_module_configuration(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    configuration_services::delete_configuration(
+        &state.s3_client,
+        ConfigurationTarget::Module,
+        &id,
+    )
+    .await?;
+
+    Ok(StatusCode::NO_CONTENT)
 }
