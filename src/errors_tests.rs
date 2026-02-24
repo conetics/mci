@@ -179,7 +179,7 @@ async fn test_app_error_unsupported_scheme_response() {
 fn test_invalid_source_display() {
     let error = AppError::invalid_source("bad-input");
     let display = format!("{}", error);
-    assert!(display.contains("Invalid  source"));
+    assert!(display.contains("Invalid source"));
     assert!(display.contains("bad-input"));
 }
 
