@@ -99,6 +99,47 @@ pub async fn put_configuration(
     Ok(())
 }
 
+pub async fn patch_configuration(
+    s3_client: &Client,
+    target: ConfigurationTarget,
+    id: &str,
+    operations: &json_patch::Patch,
+) -> Result<JsonValue> {
+    use crate::utils::json_utils;
+
+    let current = match get_configuration(s3_client, target, id).await {
+        Ok(config) => config,
+        Err(_) => serde_json::json!({}),
+    };
+
+    let patched = json_utils::apply_patch(&current, operations)?;
+
+    let schema = get_schema(s3_client, target, id).await?;
+    let output = validate_configuration(&schema, &patched)?;
+    let is_valid = output
+        .get("valid")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    if !is_valid {
+        anyhow::bail!("Configuration changes are invalid");
+    }
+
+    let body = serde_json::to_vec_pretty(&patched)
+        .context("Failed to serialize patched configuration for upload")?;
+
+    s3_client
+        .put_object()
+        .bucket(bucket_for(target))
+        .key(format!("{}/configuration.json", id))
+        .body(ByteStream::from(body))
+        .send()
+        .await
+        .context("Failed to store patched configuration in S3")?;
+
+    Ok(patched)
+}
+
 pub async fn delete_configuration(
     s3_client: &Client,
     target: ConfigurationTarget,

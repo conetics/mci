@@ -26,7 +26,10 @@ pub fn routes() -> Router<AppState> {
             "/definitions/{id}/configuration",
             put(handlers::put_definition_configuration),
         )
-        // .route("/definitions/{id}/configuration", patch(handlers::put_definition_configuration))
+        .route(
+            "/definitions/{id}/configuration",
+            patch(handlers::patch_definition_configuration),
+        )
         .route(
             "/definitions/{id}/configuration/schema",
             get(handlers::get_definition_configuration_schema),
@@ -48,7 +51,10 @@ pub fn routes() -> Router<AppState> {
             "/modules/{id}/configuration",
             put(handlers::put_module_configuration),
         )
-        // .route("/modules/{id}/configuration", patch(handlers::put_module_configuration))
+        .route(
+            "/modules/{id}/configuration",
+            patch(handlers::patch_module_configuration),
+        )
         .route(
             "/modules/{id}/configuration/schema",
             get(handlers::get_module_configuration_schema),

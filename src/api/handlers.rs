@@ -331,6 +331,25 @@ pub async fn put_definition_configuration(
     Ok(StatusCode::NO_CONTENT)
 }
 
+pub async fn patch_definition_configuration(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<JsonValue>,
+) -> Result<Json<JsonValue>, AppError> {
+    let operations: json_patch::Patch =
+        serde_json::from_value(body).map_err(|e| AppError::bad_request(e.to_string()))?;
+
+    let patched = configuration_services::patch_configuration(
+        &state.s3_client,
+        ConfigurationTarget::Definition,
+        &id,
+        &operations,
+    )
+    .await?;
+
+    Ok(Json(patched))
+}
+
 pub async fn get_module_configuration_schema(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -379,4 +398,23 @@ pub async fn put_module_configuration(
     .await?;
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn patch_module_configuration(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<JsonValue>,
+) -> Result<Json<JsonValue>, AppError> {
+    let operations: json_patch::Patch =
+        serde_json::from_value(body).map_err(|e| AppError::bad_request(e.to_string()))?;
+
+    let patched = configuration_services::patch_configuration(
+        &state.s3_client,
+        ConfigurationTarget::Module,
+        &id,
+        &operations,
+    )
+    .await?;
+
+    Ok(Json(patched))
 }

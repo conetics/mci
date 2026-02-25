@@ -38,6 +38,7 @@ sha2 = "0.10"
 bytes = "1.11"
 uuid = { version = "1.21", features = ["v4"] }
 jsonschema = "0.42"
+json-patch = "4.1"
 
 [dev-dependencies]
 tower = "0.5"

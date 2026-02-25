@@ -1327,3 +1327,365 @@ async fn module_configuration_get_returns_validation_errors() -> Result<()> {
     s3_container.stop().await.ok();
     Ok(())
 }
+
+#[tokio::test]
+async fn definition_configuration_patch_applies_operations() -> Result<()> {
+    let (pg_container, s3_container, app, s3_client) = setup_app().await?;
+
+    let schema = json!({
+        "type": "object",
+        "properties": {
+            "enabled": { "type": "boolean" },
+            "name": { "type": "string" },
+            "count": { "type": "integer" }
+        },
+        "additionalProperties": false
+    });
+
+    let config = json!({ "enabled": true, "name": "hello" });
+
+    s3_client
+        .put_object()
+        .bucket("definition-configurations")
+        .key("cfg-def-patch-1/configuration.schema.json")
+        .body(ByteStream::from(serde_json::to_vec(&schema)?))
+        .send()
+        .await?;
+
+    s3_client
+        .put_object()
+        .bucket("definition-configurations")
+        .key("cfg-def-patch-1/configuration.json")
+        .body(ByteStream::from(serde_json::to_vec(&config)?))
+        .send()
+        .await?;
+
+    let patch_ops = json!([
+        { "op": "replace", "path": "/name", "value": "world" },
+        { "op": "add", "path": "/count", "value": 42 }
+    ]);
+
+    let patch_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri("/definitions/cfg-def-patch-1/configuration")
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&patch_ops)?))
+                .unwrap(),
+        )
+        .await?;
+
+    assert_eq!(patch_resp.status(), StatusCode::OK);
+
+    let body = read_body(patch_resp).await?;
+    let result: JsonValue = serde_json::from_slice(&body)?;
+
+    assert_eq!(
+        result,
+        json!({ "enabled": true, "name": "world", "count": 42 })
+    );
+
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
+    Ok(())
+}
+
+#[tokio::test]
+async fn definition_configuration_patch_defaults_to_empty_object() -> Result<()> {
+    let (pg_container, s3_container, app, s3_client) = setup_app().await?;
+
+    let schema = json!({
+        "type": "object",
+        "properties": {
+            "enabled": { "type": "boolean" }
+        },
+        "additionalProperties": false
+    });
+
+    // Only seed the schema, no existing configuration
+    s3_client
+        .put_object()
+        .bucket("definition-configurations")
+        .key("cfg-def-patch-2/configuration.schema.json")
+        .body(ByteStream::from(serde_json::to_vec(&schema)?))
+        .send()
+        .await?;
+
+    let patch_ops = json!([
+        { "op": "add", "path": "/enabled", "value": true }
+    ]);
+
+    let patch_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri("/definitions/cfg-def-patch-2/configuration")
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&patch_ops)?))
+                .unwrap(),
+        )
+        .await?;
+
+    assert_eq!(patch_resp.status(), StatusCode::OK);
+
+    let body = read_body(patch_resp).await?;
+    let result: JsonValue = serde_json::from_slice(&body)?;
+
+    assert_eq!(result, json!({ "enabled": true }));
+
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
+    Ok(())
+}
+
+#[tokio::test]
+async fn definition_configuration_patch_rejects_invalid_result() -> Result<()> {
+    let (pg_container, s3_container, app, s3_client) = setup_app().await?;
+
+    let schema = json!({
+        "type": "object",
+        "properties": {
+            "enabled": { "type": "boolean" }
+        },
+        "additionalProperties": false
+    });
+
+    let config = json!({ "enabled": true });
+
+    s3_client
+        .put_object()
+        .bucket("definition-configurations")
+        .key("cfg-def-patch-3/configuration.schema.json")
+        .body(ByteStream::from(serde_json::to_vec(&schema)?))
+        .send()
+        .await?;
+
+    s3_client
+        .put_object()
+        .bucket("definition-configurations")
+        .key("cfg-def-patch-3/configuration.json")
+        .body(ByteStream::from(serde_json::to_vec(&config)?))
+        .send()
+        .await?;
+
+    // This patch would add a field not allowed by additionalProperties: false
+    let patch_ops = json!([
+        { "op": "add", "path": "/extra", "value": "not allowed" }
+    ]);
+
+    let patch_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri("/definitions/cfg-def-patch-3/configuration")
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&patch_ops)?))
+                .unwrap(),
+        )
+        .await?;
+
+    assert_eq!(patch_resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+    // Verify original config is unchanged
+    let get_obj = s3_client
+        .get_object()
+        .bucket("definition-configurations")
+        .key("cfg-def-patch-3/configuration.json")
+        .send()
+        .await?;
+    let stored_bytes = get_obj.body.collect().await?.into_bytes();
+    let stored: JsonValue = serde_json::from_slice(&stored_bytes)?;
+    assert_eq!(stored, json!({ "enabled": true }));
+
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
+    Ok(())
+}
+
+#[tokio::test]
+async fn definition_configuration_patch_test_op_failure() -> Result<()> {
+    let (pg_container, s3_container, app, s3_client) = setup_app().await?;
+
+    let schema = json!({
+        "type": "object",
+        "properties": {
+            "enabled": { "type": "boolean" }
+        },
+        "additionalProperties": false
+    });
+
+    let config = json!({ "enabled": true });
+
+    s3_client
+        .put_object()
+        .bucket("definition-configurations")
+        .key("cfg-def-patch-4/configuration.schema.json")
+        .body(ByteStream::from(serde_json::to_vec(&schema)?))
+        .send()
+        .await?;
+
+    s3_client
+        .put_object()
+        .bucket("definition-configurations")
+        .key("cfg-def-patch-4/configuration.json")
+        .body(ByteStream::from(serde_json::to_vec(&config)?))
+        .send()
+        .await?;
+
+    // The test op will fail because enabled is true, not false
+    let patch_ops = json!([
+        { "op": "test", "path": "/enabled", "value": false },
+        { "op": "replace", "path": "/enabled", "value": false }
+    ]);
+
+    let patch_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri("/definitions/cfg-def-patch-4/configuration")
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&patch_ops)?))
+                .unwrap(),
+        )
+        .await?;
+
+    // Patch apply itself fails -> 500 (anyhow error)
+    assert_eq!(patch_resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
+    Ok(())
+}
+
+// --- Module configuration PATCH tests ---
+
+#[tokio::test]
+async fn module_configuration_patch_applies_operations() -> Result<()> {
+    let (pg_container, s3_container, app, s3_client) = setup_app().await?;
+
+    let schema = json!({
+        "type": "object",
+        "properties": {
+            "host": { "type": "string" },
+            "port": { "type": "integer" }
+        },
+        "additionalProperties": false
+    });
+
+    let config = json!({ "host": "localhost", "port": 8080 });
+
+    s3_client
+        .put_object()
+        .bucket("module-configurations")
+        .key("cfg-mod-patch-1/configuration.schema.json")
+        .body(ByteStream::from(serde_json::to_vec(&schema)?))
+        .send()
+        .await?;
+
+    s3_client
+        .put_object()
+        .bucket("module-configurations")
+        .key("cfg-mod-patch-1/configuration.json")
+        .body(ByteStream::from(serde_json::to_vec(&config)?))
+        .send()
+        .await?;
+
+    let patch_ops = json!([
+        { "op": "replace", "path": "/port", "value": 9090 },
+        { "op": "remove", "path": "/host" }
+    ]);
+
+    let patch_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri("/modules/cfg-mod-patch-1/configuration")
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&patch_ops)?))
+                .unwrap(),
+        )
+        .await?;
+
+    assert_eq!(patch_resp.status(), StatusCode::OK);
+
+    let body = read_body(patch_resp).await?;
+    let result: JsonValue = serde_json::from_slice(&body)?;
+
+    assert_eq!(result, json!({ "port": 9090 }));
+
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
+    Ok(())
+}
+
+#[tokio::test]
+async fn module_configuration_patch_rejects_invalid_result() -> Result<()> {
+    let (pg_container, s3_container, app, s3_client) = setup_app().await?;
+
+    let schema = json!({
+        "type": "object",
+        "properties": {
+            "port": { "type": "integer" }
+        },
+        "required": ["port"],
+        "additionalProperties": false
+    });
+
+    let config = json!({ "port": 8080 });
+
+    s3_client
+        .put_object()
+        .bucket("module-configurations")
+        .key("cfg-mod-patch-2/configuration.schema.json")
+        .body(ByteStream::from(serde_json::to_vec(&schema)?))
+        .send()
+        .await?;
+
+    s3_client
+        .put_object()
+        .bucket("module-configurations")
+        .key("cfg-mod-patch-2/configuration.json")
+        .body(ByteStream::from(serde_json::to_vec(&config)?))
+        .send()
+        .await?;
+
+    // Removing a required field should fail validation
+    let patch_ops = json!([
+        { "op": "remove", "path": "/port" }
+    ]);
+
+    let patch_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri("/modules/cfg-mod-patch-2/configuration")
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&patch_ops)?))
+                .unwrap(),
+        )
+        .await?;
+
+    assert_eq!(patch_resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+    // Verify original config is unchanged
+    let get_obj = s3_client
+        .get_object()
+        .bucket("module-configurations")
+        .key("cfg-mod-patch-2/configuration.json")
+        .send()
+        .await?;
+    let stored_bytes = get_obj.body.collect().await?.into_bytes();
+    let stored: JsonValue = serde_json::from_slice(&stored_bytes)?;
+    assert_eq!(stored, json!({ "port": 8080 }));
+
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
+    Ok(())
+}
