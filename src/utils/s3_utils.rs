@@ -79,3 +79,7 @@ pub async fn put_stream(
 
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "s3_utils_tests.rs"]
+mod test;

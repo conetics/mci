@@ -1,5 +1,5 @@
-use aws_sdk_s3::{Client, primitives::ByteStream};
 use anyhow::Result;
+use aws_sdk_s3::{primitives::ByteStream, Client};
 
 #[cfg(test)]
 mod tests {
@@ -26,7 +26,14 @@ mod tests {
         let data = b"hello world";
         let wrong_digest = "sha256:deadbeef";
         let stream = ByteStream::from(Bytes::from_static(data));
-        let result = put_stream(&client, "test-bucket", "test-key", stream, Some(wrong_digest)).await;
+        let result = put_stream(
+            &client,
+            "test-bucket",
+            "test-key",
+            stream,
+            Some(wrong_digest),
+        )
+        .await;
         assert!(result.is_err());
     }
 }

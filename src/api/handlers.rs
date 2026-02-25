@@ -90,6 +90,14 @@ pub async fn delete_definition(
         )));
     }
 
+    configuration_services::delete_configuration(
+        &state.s3_client,
+        ConfigurationTarget::Definition,
+        &id,
+    )
+    .await
+    .ok();
+
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -205,6 +213,14 @@ pub async fn delete_module(
         )));
     }
 
+    configuration_services::delete_configuration(
+        &state.s3_client,
+        ConfigurationTarget::Module,
+        &id,
+    )
+    .await
+    .ok();
+
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -315,20 +331,6 @@ pub async fn put_definition_configuration(
     Ok(StatusCode::NO_CONTENT)
 }
 
-pub async fn delete_definition_configuration(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> Result<StatusCode, AppError> {
-    configuration_services::delete_configuration(
-        &state.s3_client,
-        ConfigurationTarget::Definition,
-        &id,
-    )
-    .await?;
-
-    Ok(StatusCode::NO_CONTENT)
-}
-
 pub async fn get_module_configuration_schema(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -373,20 +375,6 @@ pub async fn put_module_configuration(
         ConfigurationTarget::Module,
         &id,
         &body,
-    )
-    .await?;
-
-    Ok(StatusCode::NO_CONTENT)
-}
-
-pub async fn delete_module_configuration(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> Result<StatusCode, AppError> {
-    configuration_services::delete_configuration(
-        &state.s3_client,
-        ConfigurationTarget::Module,
-        &id,
     )
     .await?;
 

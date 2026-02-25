@@ -10,23 +10,47 @@ pub fn routes() -> Router<AppState> {
         .route("/definitions", post(handlers::create_definition))
         .route("/definitions/install", post(handlers::install_definition))
         .route("/definitions/{id}", get(handlers::get_definition))
-        .route("/definitions/{id}", delete(handlers::delete_definition))
         .route("/definitions/{id}", patch(handlers::update_definition))
-        .route("/definitions/{id}/update", post(handlers::upgrade_definition))
-        .route("/definitions/{id}/configuration", get(handlers::get_definition_configuration))
-        .route("/definitions/{id}/configuration", put(handlers::put_definition_configuration))
-        .route("/definitions/{id}/configuration", delete(handlers::delete_definition_configuration))
-        .route("/definitions/{id}/configuration/schema", get(handlers::get_definition_configuration_schema))
-
+        .route("/definitions/{id}", delete(handlers::delete_definition))
+        .route(
+            "/definitions/{id}/update",
+            post(handlers::upgrade_definition),
+        )
+        // .route("/definitions/{id}/secrets", patch(handlers::put_definition_configuration))
+        // .route("/definitions/{id}/secrets/schema", get(handlers::get_definition_configuration_schema))
+        .route(
+            "/definitions/{id}/configuration",
+            get(handlers::get_definition_configuration),
+        )
+        .route(
+            "/definitions/{id}/configuration",
+            put(handlers::put_definition_configuration),
+        )
+        // .route("/definitions/{id}/configuration", patch(handlers::put_definition_configuration))
+        .route(
+            "/definitions/{id}/configuration/schema",
+            get(handlers::get_definition_configuration_schema),
+        )
         .route("/modules", get(handlers::list_modules))
         .route("/modules", post(handlers::create_module))
         .route("/modules/install", post(handlers::install_module))
         .route("/modules/{id}", get(handlers::get_module))
-        .route("/modules/{id}", delete(handlers::delete_module))
         .route("/modules/{id}", patch(handlers::update_module))
+        .route("/modules/{id}", delete(handlers::delete_module))
         .route("/modules/{id}/update", post(handlers::upgrade_module))
-        .route("/modules/{id}/configuration", get(handlers::get_module_configuration))
-        .route("/modules/{id}/configuration", put(handlers::put_module_configuration))
-        .route("/modules/{id}/configuration", delete(handlers::delete_module_configuration))
-        .route("/modules/{id}/configuration/schema", get(handlers::get_module_configuration_schema))
+        // .route("/modules/{id}/secrets", patch(handlers::put_module_configuration))
+        // .route("/modules/{id}/secrets/schema", get(handlers::get_module_configuration_schema))
+        .route(
+            "/modules/{id}/configuration",
+            get(handlers::get_module_configuration),
+        )
+        .route(
+            "/modules/{id}/configuration",
+            put(handlers::put_module_configuration),
+        )
+        // .route("/modules/{id}/configuration", patch(handlers::put_module_configuration))
+        .route(
+            "/modules/{id}/configuration/schema",
+            get(handlers::get_module_configuration_schema),
+        )
 }

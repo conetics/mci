@@ -796,7 +796,7 @@ async fn definition_configuration_schema_get() -> Result<()> {
 }
 
 #[tokio::test]
-async fn definition_configuration_put_get_delete_flow() -> Result<()> {
+async fn definition_configuration_put_and_get_flow() -> Result<()> {
     let (pg_container, s3_container, app, s3_client) = setup_app().await?;
 
     let schema = json!({
@@ -834,7 +834,6 @@ async fn definition_configuration_put_get_delete_flow() -> Result<()> {
 
     assert_eq!(put_resp.status(), StatusCode::NO_CONTENT);
 
-    // GET configuration returns config + validation
     let get_resp = app
         .clone()
         .oneshot(
@@ -854,25 +853,82 @@ async fn definition_configuration_put_get_delete_flow() -> Result<()> {
     assert_eq!(result["configuration"], config);
     assert_eq!(result["validation"]["valid"], json!(true));
 
-    // DELETE configuration
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
+    Ok(())
+}
+
+#[tokio::test]
+async fn delete_definition_also_deletes_configuration() -> Result<()> {
+    let (pg_container, s3_container, app, s3_client) = setup_app().await?;
+
+    // Create a definition so we can delete it
+    let temp_dir = tempfile::TempDir::new()?;
+    let file_path = temp_dir.path().join("def.json");
+    let file_body = br#"{"hello":"world"}"#;
+    std::fs::write(&file_path, file_body)?;
+    let digest = format!("sha256:{:x}", Sha256::digest(file_body));
+
+    let create_payload = json!({
+        "id": "cfg-def-del",
+        "name": "Def With Config",
+        "type": "test-type",
+        "description": "Will be deleted",
+        "file_url": file_path.to_string_lossy(),
+        "digest": digest,
+    });
+
+    let create_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/definitions")
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&create_payload)?))
+                .unwrap(),
+        )
+        .await?;
+    assert_eq!(create_resp.status(), StatusCode::CREATED);
+
+    // Seed configuration objects
+    let schema = json!({ "type": "object", "properties": { "enabled": { "type": "boolean" } } });
+    let config = json!({ "enabled": true });
+
+    s3_client
+        .put_object()
+        .bucket("definition-configurations")
+        .key("cfg-def-del/configuration.schema.json")
+        .body(ByteStream::from(serde_json::to_vec(&schema)?))
+        .send()
+        .await?;
+
+    s3_client
+        .put_object()
+        .bucket("definition-configurations")
+        .key("cfg-def-del/configuration.json")
+        .body(ByteStream::from(serde_json::to_vec(&config)?))
+        .send()
+        .await?;
+
+    // Delete the definition
     let del_resp = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri("/definitions/cfg-def-2/configuration")
+                .uri("/definitions/cfg-def-del")
                 .body(Body::empty())
                 .unwrap(),
         )
         .await?;
-
     assert_eq!(del_resp.status(), StatusCode::NO_CONTENT);
 
-    // Verify objects are gone
+    // Verify configuration artifacts are also gone
     let listing = s3_client
         .list_objects_v2()
         .bucket("definition-configurations")
-        .prefix("cfg-def-2/")
+        .prefix("cfg-def-del/")
         .send()
         .await?;
     assert!(listing.contents().is_empty());
@@ -1028,7 +1084,7 @@ async fn module_configuration_schema_get() -> Result<()> {
 }
 
 #[tokio::test]
-async fn module_configuration_put_get_delete_flow() -> Result<()> {
+async fn module_configuration_put_and_get_flow() -> Result<()> {
     let (pg_container, s3_container, app, s3_client) = setup_app().await?;
 
     let schema = json!({
@@ -1086,24 +1142,82 @@ async fn module_configuration_put_get_delete_flow() -> Result<()> {
     assert_eq!(result["configuration"], config);
     assert_eq!(result["validation"]["valid"], json!(true));
 
-    // DELETE
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
+    Ok(())
+}
+
+#[tokio::test]
+async fn delete_module_also_deletes_configuration() -> Result<()> {
+    let (pg_container, s3_container, app, s3_client) = setup_app().await?;
+
+    // Create a module so we can delete it
+    let temp_dir = tempfile::TempDir::new()?;
+    let file_path = temp_dir.path().join("module.wasm");
+    let file_body = b"\0asm\x01\0\0\0";
+    std::fs::write(&file_path, file_body)?;
+    let digest = format!("sha256:{:x}", Sha256::digest(file_body));
+
+    let create_payload = json!({
+        "id": "cfg-mod-del",
+        "name": "Module With Config",
+        "type": "proxy",
+        "description": "Will be deleted",
+        "file_url": file_path.to_string_lossy(),
+        "digest": digest,
+    });
+
+    let create_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/modules")
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&create_payload)?))
+                .unwrap(),
+        )
+        .await?;
+    assert_eq!(create_resp.status(), StatusCode::CREATED);
+
+    // Seed configuration objects
+    let schema = json!({ "type": "object", "properties": { "port": { "type": "integer" } } });
+    let config = json!({ "port": 8080 });
+
+    s3_client
+        .put_object()
+        .bucket("module-configurations")
+        .key("cfg-mod-del/configuration.schema.json")
+        .body(ByteStream::from(serde_json::to_vec(&schema)?))
+        .send()
+        .await?;
+
+    s3_client
+        .put_object()
+        .bucket("module-configurations")
+        .key("cfg-mod-del/configuration.json")
+        .body(ByteStream::from(serde_json::to_vec(&config)?))
+        .send()
+        .await?;
+
+    // Delete the module
     let del_resp = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri("/modules/cfg-mod-2/configuration")
+                .uri("/modules/cfg-mod-del")
                 .body(Body::empty())
                 .unwrap(),
         )
         .await?;
-
     assert_eq!(del_resp.status(), StatusCode::NO_CONTENT);
 
+    // Verify configuration artifacts are also gone
     let listing = s3_client
         .list_objects_v2()
         .bucket("module-configurations")
-        .prefix("cfg-mod-2/")
+        .prefix("cfg-mod-del/")
         .send()
         .await?;
     assert!(listing.contents().is_empty());
