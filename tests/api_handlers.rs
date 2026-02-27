@@ -1060,7 +1060,7 @@ async fn delete_definition_also_deletes_secrets() -> Result<()> {
 /// Verifies that putting an invalid configuration against a definition is rejected and not stored.
 ///
 /// This test uploads a JSON Schema requiring a boolean `enabled` property, attempts to PUT a configuration
-/// where `enabled` is a string, asserts the handler responds with HTTP 500, and confirms no configuration
+/// where `enabled` is a string, asserts the handler responds with HTTP 400, and confirms no configuration
 /// object was written to S3.
 ///
 /// # Examples
@@ -1069,7 +1069,7 @@ async fn delete_definition_also_deletes_secrets() -> Result<()> {
 /// // Equivalent test flow:
 /// // 1. Upload schema to S3 at definition-configurations/cfg-def-3/configuration.schema.json
 /// // 2. PUT /definitions/cfg-def-3/configuration with `{ "enabled": "not-a-bool" }`
-/// // 3. Expect 500 response and no configuration.json written in S3
+/// // 3. Expect 400 response and no configuration.json written in S3
 /// ```
 #[tokio::test]
 async fn definition_configuration_put_rejects_invalid() -> Result<()> {
@@ -1104,7 +1104,7 @@ async fn definition_configuration_put_rejects_invalid() -> Result<()> {
         )
         .await?;
 
-    assert_eq!(put_resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(put_resp.status(), StatusCode::BAD_REQUEST);
 
     let listing = s3_client
         .list_objects_v2()
@@ -1499,7 +1499,7 @@ async fn module_configuration_put_rejects_invalid() -> Result<()> {
         )
         .await?;
 
-    assert_eq!(put_resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(put_resp.status(), StatusCode::BAD_REQUEST);
 
     let listing = s3_client
         .list_objects_v2()
@@ -1725,7 +1725,7 @@ async fn definition_configuration_patch_rejects_invalid_result() -> Result<()> {
         )
         .await?;
 
-    assert_eq!(patch_resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(patch_resp.status(), StatusCode::BAD_REQUEST);
 
     let get_obj = s3_client
         .get_object()
@@ -1789,7 +1789,7 @@ async fn definition_configuration_patch_test_op_failure() -> Result<()> {
         )
         .await?;
 
-    assert_eq!(patch_resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(patch_resp.status(), StatusCode::BAD_REQUEST);
 
     pg_container.stop().await.ok();
     s3_container.stop().await.ok();
@@ -1903,7 +1903,7 @@ async fn module_configuration_patch_rejects_invalid_result() -> Result<()> {
         )
         .await?;
 
-    assert_eq!(patch_resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(patch_resp.status(), StatusCode::BAD_REQUEST);
 
     let get_obj = s3_client
         .get_object()
@@ -2122,7 +2122,7 @@ async fn patch_definition_secrets_rejects_invalid_result() -> Result<()> {
         )
         .await?;
 
-    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
     let get_obj = s3_client
         .get_object()
@@ -2276,7 +2276,7 @@ async fn patch_module_secrets_applies_and_returns_no_content() -> Result<()> {
 /// and that the original secrets remain unchanged in S3.
 ///
 /// This test uploads a secrets schema and an initial secrets object, sends a JSON Patch
-/// that removes a required property, expects a 500 Internal Server Error, and asserts
+/// that removes a required property, expects a 400 Bad Request, and asserts
 /// the stored secrets in S3 are unchanged.
 ///
 /// # Examples
@@ -2332,7 +2332,7 @@ async fn patch_module_secrets_rejects_invalid_result() -> Result<()> {
         )
         .await?;
 
-    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
     let get_obj = s3_client
         .get_object()

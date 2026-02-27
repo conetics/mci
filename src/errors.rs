@@ -184,6 +184,17 @@ impl AppError {
     pub fn unsupported_scheme(scheme: impl Into<String>) -> Self {
         AppError::UnsupportedScheme(scheme.into())
     }
+
+    pub fn from_service_error(err: anyhow::Error) -> Self {
+        let msg = err.to_string();
+        if msg.contains("changes are invalid")
+            || msg.contains("Failed to apply JSON patch")
+        {
+            AppError::BadRequest(msg)
+        } else {
+            AppError::Internal(err)
+        }
+    }
 }
 
 #[cfg(test)]

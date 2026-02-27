@@ -34,21 +34,27 @@ fn bucket_for(target: SecretsTarget) -> &'static str {
 
 /// Validate a JSON instance against a JSON Schema and return the validator's evaluation as JSON.
 ///
-/// The returned JSON is the serialized evaluation list produced by the JSON Schema validator:
-/// an empty array indicates the instance is valid; otherwise the array contains validation entries describing failures.
+/// Runs `jsonschema::validator_for` on the schema, evaluates the instance, and serializes the
+/// result of `evaluation.list()` — a `ListOutput` object — to JSON. The returned object has at
+/// least a `"valid"` boolean field: `true` when the instance conforms to the schema, `false`
+/// otherwise. When validation fails the object also includes detail entries describing each
+/// violation.
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```
 /// use serde_json::json;
 /// use mci::services::secrets_services::validate_secrets;
 ///
 /// let schema = json!({"type": "object", "properties": {"a": {"type": "string"}}});
-/// let valid = json!({"a": "ok"});
-/// let invalid = json!({"a": 1});
 ///
-/// let ok_eval = validate_secrets(&schema, &valid).unwrap();
-/// let err_eval = validate_secrets(&schema, &invalid).unwrap();
+/// // Valid instance — output["valid"] is true
+/// let ok_eval = validate_secrets(&schema, &json!({"a": "ok"})).unwrap();
+/// assert_eq!(ok_eval["valid"], json!(true));
+///
+/// // Invalid instance — output["valid"] is false
+/// let err_eval = validate_secrets(&schema, &json!({"a": 1})).unwrap();
+/// assert_eq!(err_eval["valid"], json!(false));
 /// ```
 pub fn validate_secrets(schema: &JsonValue, secrets: &JsonValue) -> Result<JsonValue> {
     let validator = jsonschema::validator_for(schema).context("Invalid JSON schema")?;

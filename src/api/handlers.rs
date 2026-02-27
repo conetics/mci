@@ -453,7 +453,8 @@ pub async fn put_definition_configuration(
         &id,
         &body,
     )
-    .await?;
+    .await
+    .map_err(AppError::from_service_error)?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -472,7 +473,8 @@ pub async fn patch_definition_configuration(
         &id,
         &operations,
     )
-    .await?;
+    .await
+    .map_err(AppError::from_service_error)?;
 
     Ok(Json(patched))
 }
@@ -522,7 +524,8 @@ pub async fn put_module_configuration(
         &id,
         &body,
     )
-    .await?;
+    .await
+    .map_err(AppError::from_service_error)?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -562,7 +565,8 @@ pub async fn patch_module_configuration(
         &id,
         &operations,
     )
-    .await?;
+    .await
+    .map_err(AppError::from_service_error)?;
 
     Ok(Json(patched))
 }
@@ -622,7 +626,8 @@ pub async fn patch_definition_secrets(
         &operations,
         state.s3_kms_key_id.as_deref(),
     )
-    .await?;
+    .await
+    .map_err(AppError::from_service_error)?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -689,7 +694,8 @@ pub async fn patch_module_secrets(
         &operations,
         state.s3_kms_key_id.as_deref(),
     )
-    .await?;
+    .await
+    .map_err(AppError::from_service_error)?;
 
     Ok(StatusCode::NO_CONTENT)
 }
