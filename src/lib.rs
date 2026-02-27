@@ -21,6 +21,7 @@ pub struct AppState {
     pub db_pool: db::PgPool,
     pub http_client: reqwest::Client,
     pub s3_client: aws_sdk_s3::Client,
+    pub s3_kms_key_id: Option<String>,
 }
 
 pub fn app(app_state: AppState) -> Router {
@@ -47,10 +48,15 @@ pub async fn serve(
     )
     .await;
 
+    if config.s3_kms_key_id.is_none() {
+        warn!("S3_KMS_KEY_ID is not set. Secrets will be stored without server-side encryption.");
+    }
+
     let app = app(AppState {
         db_pool,
         http_client,
         s3_client,
+        s3_kms_key_id: config.s3_kms_key_id.clone(),
     });
 
     let addr: SocketAddr = config

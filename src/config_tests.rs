@@ -46,6 +46,7 @@ fn test_minimal_valid_configuration() {
     assert_eq!(config.s3_secret_key, "none");
     assert_eq!(config.key_path, None);
     assert_eq!(config.cert_path, None);
+    assert_eq!(config.s3_kms_key_id, None);
 }
 
 #[test]
@@ -61,6 +62,7 @@ fn test_full_configuration() {
     map.insert("s3_region", "eu-west-1");
     map.insert("s3_access_key", "test_access_key");
     map.insert("s3_secret_key", "test_secret_key");
+    map.insert("s3_kms_key_id", "arn:aws:kms:us-east-1:123456789:key/test-key-id");
 
     let config = Config::from_map(map).expect("Failed to load config");
 
@@ -73,6 +75,7 @@ fn test_full_configuration() {
     assert_eq!(config.s3_region, "eu-west-1");
     assert_eq!(config.s3_access_key, "test_access_key");
     assert_eq!(config.s3_secret_key, "test_secret_key");
+    assert_eq!(config.s3_kms_key_id, Some("arn:aws:kms:us-east-1:123456789:key/test-key-id".to_string()));
 }
 
 #[test]
@@ -94,6 +97,7 @@ fn test_production_like_config() {
     map.insert("s3_region", "us-west-2");
     map.insert("s3_access_key", "AKIAIOSFODNN7EXAMPLE");
     map.insert("s3_secret_key", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY");
+    map.insert("s3_kms_key_id", "arn:aws:kms:us-west-2:123456789:key/prod-key-id");
 
     let config = Config::from_map(map).expect("Failed to load config");
 
@@ -117,6 +121,10 @@ fn test_production_like_config() {
     assert_eq!(
         config.s3_secret_key,
         "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+    );
+    assert_eq!(
+        config.s3_kms_key_id,
+        Some("arn:aws:kms:us-west-2:123456789:key/prod-key-id".to_string())
     );
 }
 
@@ -178,6 +186,7 @@ fn test_unset_optional_is_none() {
 
     assert_eq!(config.key_path, None);
     assert_eq!(config.cert_path, None);
+    assert_eq!(config.s3_kms_key_id, None);
 }
 
 #[test]

@@ -5,6 +5,7 @@ use crate::{
         configuration_services::{self, ConfigurationTarget},
         definitions_services::{self, DefinitionFilter, DefinitionPayload},
         modules_services::{self, ModuleFilter, ModulePayload},
+        secrets_services::{self, SecretsTarget},
     },
     AppState,
 };
@@ -97,6 +98,10 @@ pub async fn delete_definition(
     )
     .await
     .ok();
+
+    secrets_services::delete_secrets(&state.s3_client, SecretsTarget::Definition, &id)
+        .await
+        .ok();
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -220,6 +225,10 @@ pub async fn delete_module(
     )
     .await
     .ok();
+
+    secrets_services::delete_secrets(&state.s3_client, SecretsTarget::Module, &id)
+        .await
+        .ok();
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -417,4 +426,64 @@ pub async fn patch_module_configuration(
     .await?;
 
     Ok(Json(patched))
+}
+
+pub async fn get_definition_secrets_schema(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<JsonValue>, AppError> {
+    let schema =
+        secrets_services::get_schema(&state.s3_client, SecretsTarget::Definition, &id).await?;
+
+    Ok(Json(schema))
+}
+
+pub async fn patch_definition_secrets(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<JsonValue>,
+) -> Result<StatusCode, AppError> {
+    let operations: json_patch::Patch =
+        serde_json::from_value(body).map_err(|e| AppError::bad_request(e.to_string()))?;
+
+    secrets_services::patch_secrets(
+        &state.s3_client,
+        SecretsTarget::Definition,
+        &id,
+        &operations,
+        state.s3_kms_key_id.as_deref(),
+    )
+    .await?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn get_module_secrets_schema(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<JsonValue>, AppError> {
+    let schema =
+        secrets_services::get_schema(&state.s3_client, SecretsTarget::Module, &id).await?;
+
+    Ok(Json(schema))
+}
+
+pub async fn patch_module_secrets(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<JsonValue>,
+) -> Result<StatusCode, AppError> {
+    let operations: json_patch::Patch =
+        serde_json::from_value(body).map_err(|e| AppError::bad_request(e.to_string()))?;
+
+    secrets_services::patch_secrets(
+        &state.s3_client,
+        SecretsTarget::Module,
+        &id,
+        &operations,
+        state.s3_kms_key_id.as_deref(),
+    )
+    .await?;
+
+    Ok(StatusCode::NO_CONTENT)
 }
