@@ -1922,7 +1922,7 @@ async fn module_configuration_patch_rejects_invalid_result() -> Result<()> {
 
 #[tokio::test]
 async fn get_definition_secrets_schema_returns_schema() -> Result<()> {
-    let (_pg_container, _s3_container, app, s3_client) = setup_app().await?;
+    let (pg_container, s3_container, app, s3_client) = setup_app().await?;
 
     let schema = json!({
         "type": "object",
@@ -1954,8 +1954,8 @@ async fn get_definition_secrets_schema_returns_schema() -> Result<()> {
     let returned: JsonValue = serde_json::from_slice(&body)?;
     assert_eq!(returned, schema);
 
-    _pg_container.stop().await.ok();
-    _s3_container.stop().await.ok();
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
     Ok(())
 }
 
@@ -1973,7 +1973,7 @@ async fn get_definition_secrets_schema_returns_schema() -> Result<()> {
 /// ```
 #[tokio::test]
 async fn patch_definition_secrets_applies_and_returns_no_content() -> Result<()> {
-    let (_pg_container, _s3_container, app, s3_client) = setup_app().await?;
+    let (pg_container, s3_container, app, s3_client) = setup_app().await?;
 
     let schema = json!({
         "type": "object",
@@ -2021,14 +2021,14 @@ async fn patch_definition_secrets_applies_and_returns_no_content() -> Result<()>
     let stored: JsonValue = serde_json::from_slice(&stored_bytes)?;
     assert_eq!(stored, json!({ "api_key": "sk-secret-123" }));
 
-    _pg_container.stop().await.ok();
-    _s3_container.stop().await.ok();
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
     Ok(())
 }
 
 #[tokio::test]
 async fn patch_definition_secrets_defaults_to_empty_object() -> Result<()> {
-    let (_pg_container, _s3_container, app, s3_client) = setup_app().await?;
+    let (pg_container, s3_container, app, s3_client) = setup_app().await?;
 
     let schema = json!({
         "type": "object",
@@ -2072,14 +2072,14 @@ async fn patch_definition_secrets_defaults_to_empty_object() -> Result<()> {
     let stored: JsonValue = serde_json::from_slice(&stored_bytes)?;
     assert_eq!(stored, json!({ "token": "tok-abc" }));
 
-    _pg_container.stop().await.ok();
-    _s3_container.stop().await.ok();
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
     Ok(())
 }
 
 #[tokio::test]
 async fn patch_definition_secrets_rejects_invalid_result() -> Result<()> {
-    let (_pg_container, _s3_container, app, s3_client) = setup_app().await?;
+    let (pg_container, s3_container, app, s3_client) = setup_app().await?;
 
     let schema = json!({
         "type": "object",
@@ -2134,8 +2134,8 @@ async fn patch_definition_secrets_rejects_invalid_result() -> Result<()> {
     let stored: JsonValue = serde_json::from_slice(&stored_bytes)?;
     assert_eq!(stored, json!({ "api_key": "sk-123" }));
 
-    _pg_container.stop().await.ok();
-    _s3_container.stop().await.ok();
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
     Ok(())
 }
 
@@ -2177,7 +2177,7 @@ async fn patch_definition_secrets_rejects_invalid_result() -> Result<()> {
 /// ```
 #[tokio::test]
 async fn get_module_secrets_schema_returns_schema() -> Result<()> {
-    let (_pg_container, _s3_container, app, s3_client) = setup_app().await?;
+    let (pg_container, s3_container, app, s3_client) = setup_app().await?;
 
     let schema = json!({
         "type": "object",
@@ -2209,14 +2209,14 @@ async fn get_module_secrets_schema_returns_schema() -> Result<()> {
     let returned: JsonValue = serde_json::from_slice(&body)?;
     assert_eq!(returned, schema);
 
-    _pg_container.stop().await.ok();
-    _s3_container.stop().await.ok();
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
     Ok(())
 }
 
 #[tokio::test]
 async fn patch_module_secrets_applies_and_returns_no_content() -> Result<()> {
-    let (_pg_container, _s3_container, app, s3_client) = setup_app().await?;
+    let (pg_container, s3_container, app, s3_client) = setup_app().await?;
 
     let schema = json!({
         "type": "object",
@@ -2267,8 +2267,8 @@ async fn patch_module_secrets_applies_and_returns_no_content() -> Result<()> {
         json!({ "connection_string": "postgres://secret@db/prod" })
     );
 
-    _pg_container.stop().await.ok();
-    _s3_container.stop().await.ok();
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
     Ok(())
 }
 
@@ -2288,7 +2288,7 @@ async fn patch_module_secrets_applies_and_returns_no_content() -> Result<()> {
 /// ```
 #[tokio::test]
 async fn patch_module_secrets_rejects_invalid_result() -> Result<()> {
-    let (_pg_container, _s3_container, app, s3_client) = setup_app().await?;
+    let (pg_container, s3_container, app, s3_client) = setup_app().await?;
 
     let schema = json!({
         "type": "object",
@@ -2347,7 +2347,7 @@ async fn patch_module_secrets_rejects_invalid_result() -> Result<()> {
         json!({ "connection_string": "postgres://secret@db/prod" })
     );
 
-    _pg_container.stop().await.ok();
-    _s3_container.stop().await.ok();
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
     Ok(())
 }
