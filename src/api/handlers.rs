@@ -250,52 +250,23 @@ pub async fn get_module(
 }
 
 /// Deletes a module and its associated configuration and secrets.
-
 ///
-
 /// Attempts to remove the module record from the database and, on success,
-
 /// deletes the module's stored configuration and secrets from S3. If no
-
 /// module with the given id exists, an `AppError::not_found` is returned.
-
 ///
-
 /// # Returns
-
 ///
-
 /// `StatusCode::NO_CONTENT` on success.
-
 ///
-
 /// # Errors
-
 ///
-
 /// Returns `AppError::not_found` if a module with the provided id does not exist.
-
 /// Other `AppError` variants may be returned for database, S3, or service failures.
-
 ///
-
 /// # Examples
-
 ///
-
-/// ```no_run
-
-/// use axum::http::StatusCode;
-
 ///
-
-/// // In an integration test you would call the handler and assert the response:
-
-/// // let response = delete_module(state, axum::extract::Path("module-id".to_string())).await;
-
-/// // assert_eq!(response.unwrap(), StatusCode::NO_CONTENT);
-
-/// ```
 pub async fn delete_module(
     State(state): State<AppState>,
     Path(id): Path<String>,
