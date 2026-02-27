@@ -18,8 +18,8 @@ async fn test_put_stream_sha256_digest_match() {
         Err(e) => {
             let msg = format!("{e:?}");
             assert!(
-                !msg.contains("Digest mismatch"),
-                "should not get a digest error when digest matches, got: {msg}"
+                msg.contains("Failed to upload object to S3"),
+                "expected an S3 upload error (no endpoint configured), but got: {msg}"
             );
         }
     }

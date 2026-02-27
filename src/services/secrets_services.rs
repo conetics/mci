@@ -92,7 +92,7 @@ pub async fn patch_secrets(
         .unwrap_or(false);
 
     if !is_valid {
-        anyhow::bail!("Secrets changes are invalid");
+        anyhow::bail!("Secrets changes are invalid: {}", output);
     }
 
     let body = serde_json::to_vec_pretty(&patched)
