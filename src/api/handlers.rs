@@ -9,7 +9,6 @@ use crate::{
     },
     AppState,
 };
-use tracing::warn;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -17,6 +16,7 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::Value as JsonValue;
+use tracing::warn;
 use validator::Validate;
 
 #[derive(Debug, Deserialize, Validate)]
@@ -124,16 +124,22 @@ pub async fn delete_definition(
 
     match (config_result, secrets_result) {
         (Ok(()), Ok(())) => Ok(StatusCode::NO_CONTENT),
-        (Err(e), Ok(())) => Err(anyhow::anyhow!(
+        (Err(e), Ok(())) => {
+            Err(anyhow::anyhow!(
             "Definition '{}' was deleted but its configuration could not be removed from S3: {}. \
              Orphaned configuration objects may remain in the '{}/' prefix.",
             id, e, id
-        ).into()),
+        )
+            .into())
+        }
         (Ok(()), Err(e)) => Err(anyhow::anyhow!(
             "Definition '{}' was deleted but its secrets could not be removed from S3: {}. \
              Orphaned secrets objects may remain in the '{}/' prefix.",
-            id, e, id
-        ).into()),
+            id,
+            e,
+            id
+        )
+        .into()),
         (Err(config_err), Err(secrets_err)) => {
             warn!(
                 definition_id = %id,
@@ -146,8 +152,12 @@ pub async fn delete_definition(
             Err(anyhow::anyhow!(
                 "Definition '{}' was deleted but S3 cleanup failed for both configuration ({}) \
                  and secrets ({}). Orphaned objects may remain in the '{}/' prefix.",
-                id, config_err, secrets_err, id
-            ).into())
+                id,
+                config_err,
+                secrets_err,
+                id
+            )
+            .into())
         }
     }
 }
@@ -297,13 +307,19 @@ pub async fn delete_module(
         (Err(e), Ok(())) => Err(anyhow::anyhow!(
             "Module '{}' was deleted but its configuration could not be removed from S3: {}. \
              Orphaned configuration objects may remain in the '{}/' prefix.",
-            id, e, id
-        ).into()),
+            id,
+            e,
+            id
+        )
+        .into()),
         (Ok(()), Err(e)) => Err(anyhow::anyhow!(
             "Module '{}' was deleted but its secrets could not be removed from S3: {}. \
              Orphaned secrets objects may remain in the '{}/' prefix.",
-            id, e, id
-        ).into()),
+            id,
+            e,
+            id
+        )
+        .into()),
         (Err(config_err), Err(secrets_err)) => {
             warn!(
                 module_id = %id,
@@ -316,8 +332,12 @@ pub async fn delete_module(
             Err(anyhow::anyhow!(
                 "Module '{}' was deleted but S3 cleanup failed for both configuration ({}) \
                  and secrets ({}). Orphaned objects may remain in the '{}/' prefix.",
-                id, config_err, secrets_err, id
-            ).into())
+                id,
+                config_err,
+                secrets_err,
+                id
+            )
+            .into())
         }
     }
 }
