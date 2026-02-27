@@ -206,7 +206,11 @@ pub async fn patch_secrets(
         .unwrap_or(false);
 
     if !is_valid {
-        return Err(super::ServiceError::InvalidChanges(format!("Secrets changes are invalid: {}", output)).into());
+        return Err(super::ServiceError::InvalidChanges(format!(
+            "Secrets changes are invalid: {}",
+            output
+        ))
+        .into());
     }
 
     let body = serde_json::to_vec_pretty(&patched)

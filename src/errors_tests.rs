@@ -340,8 +340,7 @@ fn test_from_service_error_invalid_changes_maps_to_bad_request() {
 #[test]
 fn test_from_service_error_patch_failed_maps_to_bad_request() {
     let source = anyhow::anyhow!("path '/missing' does not exist");
-    let err: anyhow::Error =
-        crate::services::ServiceError::PatchFailed { source }.into();
+    let err: anyhow::Error = crate::services::ServiceError::PatchFailed { source }.into();
     let app_error = AppError::from_service_error(err);
 
     match app_error {

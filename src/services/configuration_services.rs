@@ -81,7 +81,10 @@ pub async fn put_configuration(
         .unwrap_or(false);
 
     if !is_valid {
-        return Err(super::ServiceError::InvalidChanges("Configuration changes are invalid".into()).into());
+        return Err(super::ServiceError::InvalidChanges(
+            "Configuration changes are invalid".into(),
+        )
+        .into());
     }
 
     let body = serde_json::to_vec_pretty(configuration)
@@ -131,7 +134,10 @@ pub async fn patch_configuration(
         .unwrap_or(false);
 
     if !is_valid {
-        return Err(super::ServiceError::InvalidChanges("Configuration changes are invalid".into()).into());
+        return Err(super::ServiceError::InvalidChanges(
+            "Configuration changes are invalid".into(),
+        )
+        .into());
     }
 
     let body = serde_json::to_vec_pretty(&patched)
