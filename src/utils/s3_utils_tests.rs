@@ -10,10 +10,7 @@ use sha2::{Digest, Sha256};
 ///
 /// # Examples
 ///
-/// ```no_run
-/// use bytes::Bytes;
-/// use aws_sdk_s3::types::ByteStream;
-/// use sha2::{Digest, Sha256};
+///
 ///
 /// // Prepare client and data
 /// let client = aws_sdk_s3::Client::from_conf(aws_sdk_s3::Config::builder().build());
