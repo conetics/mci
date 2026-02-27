@@ -4,6 +4,18 @@ use axum::{
     Router,
 };
 
+/// Constructs the HTTP router with all API endpoints for managing definitions and modules.
+///
+/// The returned `Router<AppState>` routes requests to handlers for CRUD operations and related
+/// sub-resources (install, upgrade, secrets, configuration, and their schemas) for both
+/// definitions and modules.
+///
+/// # Examples
+///
+/// ```no_run
+/// use axum::Router;
+/// let router: Router<_> = mci::api::routes::routes();
+/// ```
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/definitions", get(handlers::list_definitions))
@@ -16,8 +28,14 @@ pub fn routes() -> Router<AppState> {
             "/definitions/{id}/update",
             post(handlers::upgrade_definition),
         )
-        // .route("/definitions/{id}/secrets", patch(handlers::put_definition_configuration))
-        // .route("/definitions/{id}/secrets/schema", get(handlers::get_definition_configuration_schema))
+        .route(
+            "/definitions/{id}/secrets",
+            patch(handlers::patch_definition_secrets),
+        )
+        .route(
+            "/definitions/{id}/secrets/schema",
+            get(handlers::get_definition_secrets_schema),
+        )
         .route(
             "/definitions/{id}/configuration",
             get(handlers::get_definition_configuration),
@@ -41,8 +59,14 @@ pub fn routes() -> Router<AppState> {
         .route("/modules/{id}", patch(handlers::update_module))
         .route("/modules/{id}", delete(handlers::delete_module))
         .route("/modules/{id}/update", post(handlers::upgrade_module))
-        // .route("/modules/{id}/secrets", patch(handlers::put_module_configuration))
-        // .route("/modules/{id}/secrets/schema", get(handlers::get_module_configuration_schema))
+        .route(
+            "/modules/{id}/secrets",
+            patch(handlers::patch_module_secrets),
+        )
+        .route(
+            "/modules/{id}/secrets/schema",
+            get(handlers::get_module_secrets_schema),
+        )
         .route(
             "/modules/{id}/configuration",
             get(handlers::get_module_configuration),

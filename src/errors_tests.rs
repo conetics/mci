@@ -321,3 +321,45 @@ fn test_internal_display() {
     assert!(display.contains("Internal error"));
     assert!(display.contains("boom"));
 }
+
+#[test]
+fn test_from_service_error_invalid_changes_maps_to_bad_request() {
+    let err: anyhow::Error =
+        crate::services::ServiceError::InvalidChanges("Configuration changes are invalid".into())
+            .into();
+    let app_error = AppError::from_service_error(err);
+
+    match app_error {
+        AppError::BadRequest(msg) => {
+            assert!(msg.contains("Configuration changes are invalid"));
+        }
+        _ => panic!("Expected BadRequest variant, got {:?}", app_error),
+    }
+}
+
+#[test]
+fn test_from_service_error_patch_failed_maps_to_bad_request() {
+    let source = anyhow::anyhow!("path '/missing' does not exist");
+    let err: anyhow::Error = crate::services::ServiceError::PatchFailed { source }.into();
+    let app_error = AppError::from_service_error(err);
+
+    match app_error {
+        AppError::BadRequest(msg) => {
+            assert!(msg.contains("Failed to apply JSON patch"));
+        }
+        _ => panic!("Expected BadRequest variant, got {:?}", app_error),
+    }
+}
+
+#[test]
+fn test_from_service_error_other_anyhow_maps_to_internal() {
+    let err = anyhow::anyhow!("unexpected S3 failure");
+    let app_error = AppError::from_service_error(err);
+
+    match app_error {
+        AppError::Internal(inner) => {
+            assert!(inner.to_string().contains("unexpected S3 failure"));
+        }
+        _ => panic!("Expected Internal variant, got {:?}", app_error),
+    }
+}

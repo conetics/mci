@@ -184,6 +184,13 @@ impl AppError {
     pub fn unsupported_scheme(scheme: impl Into<String>) -> Self {
         AppError::UnsupportedScheme(scheme.into())
     }
+
+    pub fn from_service_error(err: anyhow::Error) -> Self {
+        match err.downcast::<crate::services::ServiceError>() {
+            Ok(service_err) => AppError::BadRequest(service_err.to_string()),
+            Err(other) => AppError::Internal(other),
+        }
+    }
 }
 
 #[cfg(test)]

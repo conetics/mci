@@ -21,8 +21,20 @@ pub struct AppState {
     pub db_pool: db::PgPool,
     pub http_client: reqwest::Client,
     pub s3_client: aws_sdk_s3::Client,
+    pub s3_kms_key_id: Option<String>,
 }
 
+/// Builds the HTTP router with API routes, tracing, and the provided shared application state.
+///
+/// The returned `Router` includes the API route set, a `TraceLayer` for request tracing, and the given `AppState` attached as shared state.
+///
+/// # Parameters
+///
+/// - `app_state`: Shared application state (database pool, HTTP/S3 clients, optional S3 KMS key) to be made available to route handlers.
+///
+/// # Returns
+///
+/// A `Router` configured with the API routes, tracing middleware, and the provided shared state.
 pub fn app(app_state: AppState) -> Router {
     Router::new()
         .merge(api::routes::routes())
@@ -30,6 +42,26 @@ pub fn app(app_state: AppState) -> Router {
         .with_state(app_state)
 }
 
+/// Starts and prepares the HTTP(S) server from the supplied configuration and handle.
+///
+/// Creates the database pool and HTTP/S3 clients, logs S3 KMS configuration, constructs the application router, binds to the configured address, and returns a future that runs the server plus the resolved socket address.
+///
+/// # Returns
+///
+/// A tuple where the first element is a future that runs the server and yields `Result<(), std::io::Error>` when the server stops, and the second element is the bound `SocketAddr`.
+///
+/// # Examples
+///
+/// ```ignore
+/// # async fn run_example() -> Result<(), Box<dyn std::error::Error>> {
+/// let cfg = mci::config::Config::default();
+/// let handle = axum_server::Handle::new();
+/// let (server_future, addr) = mci::serve(&cfg, handle).await?;
+/// tokio::spawn(server_future);
+/// println!("Server listening on {}", addr);
+/// # Ok(())
+/// # }
+/// ```
 pub async fn serve(
     config: &config::Config,
     handle: Handle<std::net::SocketAddr>,
@@ -47,10 +79,15 @@ pub async fn serve(
     )
     .await;
 
+    if config.s3_kms_key_id.is_none() {
+        warn!("S3_KMS_KEY_ID is not set. Secrets will be stored without server-side encryption.");
+    }
+
     let app = app(AppState {
         db_pool,
         http_client,
         s3_client,
+        s3_kms_key_id: config.s3_kms_key_id.clone(),
     });
 
     let addr: SocketAddr = config

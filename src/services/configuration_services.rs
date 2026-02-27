@@ -81,7 +81,10 @@ pub async fn put_configuration(
         .unwrap_or(false);
 
     if !is_valid {
-        anyhow::bail!("Configuration changes are invalid");
+        return Err(super::ServiceError::InvalidChanges(
+            "Configuration changes are invalid".into(),
+        )
+        .into());
     }
 
     let body = serde_json::to_vec_pretty(configuration)
@@ -99,6 +102,14 @@ pub async fn put_configuration(
     Ok(())
 }
 
+// TODO: This read-modify-write (get_configuration -> apply_patch -> put_object) has a
+// lost-update race under concurrent PATCH requests. The fix is to capture the
+// S3 ETag from get_configuration and use a conditional PutObject (If-Match) so a
+// concurrent write returns 412/409 instead of being silently overwritten.
+// Deferred: requires verifying MinIO testcontainer compatibility with If-Match
+// on PutObject, adding ETag threading through get_configuration, and designing the
+// client-facing retry/conflict contract. Low priority — configuration patches are
+// infrequent admin operations with minimal concurrency risk.
 pub async fn patch_configuration(
     s3_client: &Client,
     target: ConfigurationTarget,
@@ -112,7 +123,8 @@ pub async fn patch_configuration(
         Err(_) => serde_json::json!({}),
     };
 
-    let patched = json_utils::apply_patch(&current, operations)?;
+    let patched = json_utils::apply_patch(&current, operations)
+        .map_err(|e| super::ServiceError::PatchFailed { source: e })?;
 
     let schema = get_schema(s3_client, target, id).await?;
     let output = validate_configuration(&schema, &patched)?;
@@ -122,7 +134,10 @@ pub async fn patch_configuration(
         .unwrap_or(false);
 
     if !is_valid {
-        anyhow::bail!("Configuration changes are invalid");
+        return Err(super::ServiceError::InvalidChanges(
+            "Configuration changes are invalid".into(),
+        )
+        .into());
     }
 
     let body = serde_json::to_vec_pretty(&patched)
@@ -140,12 +155,27 @@ pub async fn patch_configuration(
     Ok(patched)
 }
 
+/// Deletes all objects in the configuration bucket under the given configuration id prefix.
+///
+/// Sends a request to remove every S3 object with the key prefix "{id}/" from the bucket corresponding
+/// to `target`. Returns an error if the deletion operation fails.
+///
+/// # Examples
+///
+/// ```no_run
+/// # use mci::services::configuration_services::{delete_configuration, ConfigurationTarget};
+/// # async fn example(client: &aws_sdk_s3::Client) -> anyhow::Result<()> {
+/// delete_configuration(client, ConfigurationTarget::Definition, "my-config-id").await?;
+/// # Ok(())
+/// # }
+/// ```
 pub async fn delete_configuration(
     s3_client: &Client,
     target: ConfigurationTarget,
     id: &str,
 ) -> Result<()> {
-    s3_utils::delete_objects_with_prefix(s3_client, bucket_for(target), id)
+    let prefix = format!("{}/", id);
+    s3_utils::delete_objects_with_prefix(s3_client, bucket_for(target), &prefix)
         .await
         .context("Failed to delete configuration artifacts from S3")?;
 
