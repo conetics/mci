@@ -46,6 +46,7 @@ fn test_minimal_valid_configuration() {
     assert_eq!(config.s3_secret_key, "none");
     assert_eq!(config.key_path, None);
     assert_eq!(config.cert_path, None);
+    assert_eq!(config.s3_kms_key_id, None);
 }
 
 #[test]
@@ -61,6 +62,10 @@ fn test_full_configuration() {
     map.insert("s3_region", "eu-west-1");
     map.insert("s3_access_key", "test_access_key");
     map.insert("s3_secret_key", "test_secret_key");
+    map.insert(
+        "s3_kms_key_id",
+        "arn:aws:kms:us-east-1:123456789:key/test-key-id",
+    );
 
     let config = Config::from_map(map).expect("Failed to load config");
 
@@ -73,6 +78,10 @@ fn test_full_configuration() {
     assert_eq!(config.s3_region, "eu-west-1");
     assert_eq!(config.s3_access_key, "test_access_key");
     assert_eq!(config.s3_secret_key, "test_secret_key");
+    assert_eq!(
+        config.s3_kms_key_id,
+        Some("arn:aws:kms:us-east-1:123456789:key/test-key-id".to_string())
+    );
 }
 
 #[test]
@@ -94,6 +103,10 @@ fn test_production_like_config() {
     map.insert("s3_region", "us-west-2");
     map.insert("s3_access_key", "AKIAIOSFODNN7EXAMPLE");
     map.insert("s3_secret_key", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY");
+    map.insert(
+        "s3_kms_key_id",
+        "arn:aws:kms:us-west-2:123456789:key/prod-key-id",
+    );
 
     let config = Config::from_map(map).expect("Failed to load config");
 
@@ -117,6 +130,10 @@ fn test_production_like_config() {
     assert_eq!(
         config.s3_secret_key,
         "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+    );
+    assert_eq!(
+        config.s3_kms_key_id,
+        Some("arn:aws:kms:us-west-2:123456789:key/prod-key-id".to_string())
     );
 }
 
@@ -178,6 +195,7 @@ fn test_unset_optional_is_none() {
 
     assert_eq!(config.key_path, None);
     assert_eq!(config.cert_path, None);
+    assert_eq!(config.s3_kms_key_id, None);
 }
 
 #[test]
@@ -244,4 +262,134 @@ fn test_multiple_load_calls_are_consistent() {
     assert_eq!(config1.address, config2.address);
     assert_eq!(config1.database_url, config2.database_url);
     assert_eq!(config1.s3_url, config2.s3_url);
+}
+
+#[test]
+fn test_config_with_ipv6_address() {
+    let mut map = minimal_config();
+
+    map.insert("address", "[::1]:8080");
+
+    let config = Config::from_map(map).expect("Failed to load config");
+
+    assert_eq!(config.address, "[::1]:8080");
+}
+
+#[test]
+fn test_config_with_different_log_levels() {
+    let log_levels = ["trace", "debug", "info", "warn", "error"];
+
+    for level in log_levels {
+        let mut map = minimal_config();
+        map.insert("log_level", level);
+
+        let config = Config::from_map(map).expect("Failed to load config");
+
+        assert_eq!(config.log_level, level);
+    }
+}
+
+#[test]
+fn test_config_with_url_with_port() {
+    let mut map = minimal_config();
+
+    map.insert("database_url", "postgres://user:pass@localhost:5432/db");
+    map.insert("s3_url", "https://s3.amazonaws.com:443");
+
+    let config = Config::from_map(map).expect("Failed to load config");
+
+    assert_eq!(config.database_url, "postgres://user:pass@localhost:5432/db");
+    assert_eq!(config.s3_url, "https://s3.amazonaws.com:443");
+}
+
+#[test]
+fn test_config_with_relative_paths() {
+    let mut map = minimal_config();
+
+    map.insert("key_path", "./relative/path/to/key.pem");
+    map.insert("cert_path", "../another/path/to/cert.pem");
+
+    let config = Config::from_map(map).expect("Failed to load config");
+
+    assert_eq!(
+        config.key_path,
+        Some("./relative/path/to/key.pem".to_string())
+    );
+    assert_eq!(
+        config.cert_path,
+        Some("../another/path/to/cert.pem".to_string())
+    );
+}
+
+#[test]
+fn test_config_with_whitespace_in_values() {
+    let mut map = minimal_config();
+
+    map.insert("database_url", "  postgres://localhost/test  ");
+    map.insert("s3_url", "  http://localhost:9000  ");
+
+    let config = Config::from_map(map).expect("Failed to load config");
+
+    assert_eq!(config.database_url, "  postgres://localhost/test  ");
+    assert_eq!(config.s3_url, "  http://localhost:9000  ");
+}
+
+#[test]
+fn test_config_clone() {
+    let mut map = minimal_config();
+
+    map.insert("log_level", "debug");
+
+    let config1 = Config::from_map(map).expect("Failed to load config");
+    let config2 = config1.clone();
+
+    assert_eq!(config1, config2);
+}
+
+#[test]
+fn test_config_with_international_characters() {
+    let mut map = minimal_config();
+
+    map.insert(
+        "database_url",
+        "postgres://üser:pässwörd@høst:5432/dätäbäse",
+    );
+
+    let config = Config::from_map(map).expect("Failed to load config");
+
+    assert_eq!(
+        config.database_url,
+        "postgres://üser:pässwörd@høst:5432/dätäbäse"
+    );
+}
+
+#[test]
+fn test_config_with_numeric_log_level() {
+    let mut map = minimal_config();
+
+    map.insert("log_level", "0");
+
+    let config = Config::from_map(map).expect("Failed to load config");
+
+    assert_eq!(config.log_level, "0");
+}
+
+#[test]
+fn test_config_s3_region_variations() {
+    let regions = [
+        "us-east-1",
+        "us-west-2",
+        "eu-west-1",
+        "ap-southeast-1",
+        "local",
+    ];
+
+    for region in regions {
+        let mut map = minimal_config();
+        map.insert("s3_region", region);
+
+        let config = Config::from_map(map).expect("Failed to load config");
+
+        assert_eq!(config.s3_region, region);
+    }
 }
