@@ -1,7 +1,7 @@
+use crate::utils::{json_utils, s3_utils};
 use anyhow::{Context, Result};
-use crate::utils::{s3_utils, json_utils};
-use serde_json::Value as JsonValue;
 use aws_sdk_s3::{primitives::ByteStream, Client};
+use serde_json::Value as JsonValue;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SecretsTarget {
@@ -23,11 +23,7 @@ pub fn validate_secrets(schema: &JsonValue, secrets: &JsonValue) -> Result<JsonV
     serde_json::to_value(evaluation.list()).context("Failed to serialize validation output")
 }
 
-pub async fn get_schema(
-    s3_client: &Client,
-    target: SecretsTarget,
-    id: &str,
-) -> Result<JsonValue> {
+pub async fn get_schema(s3_client: &Client, target: SecretsTarget, id: &str) -> Result<JsonValue> {
     let response = s3_client
         .get_object()
         .bucket(bucket_for(target))
@@ -45,11 +41,7 @@ pub async fn get_schema(
     serde_json::from_slice(&bytes).context("Failed to deserialize secrets schema JSON")
 }
 
-async fn get_secrets(
-    s3_client: &Client,
-    target: SecretsTarget,
-    id: &str,
-) -> Result<JsonValue> {
+async fn get_secrets(s3_client: &Client, target: SecretsTarget, id: &str) -> Result<JsonValue> {
     let response = s3_client
         .get_object()
         .bucket(bucket_for(target))
@@ -92,8 +84,8 @@ pub async fn patch_secrets(
         anyhow::bail!("Secrets changes are invalid");
     }
 
-    let body =
-        serde_json::to_vec_pretty(&patched).context("Failed to serialize patched secrets for upload")?;
+    let body = serde_json::to_vec_pretty(&patched)
+        .context("Failed to serialize patched secrets for upload")?;
 
     let mut req = s3_client
         .put_object()
@@ -114,11 +106,7 @@ pub async fn patch_secrets(
     Ok(())
 }
 
-pub async fn delete_secrets(
-    s3_client: &Client,
-    target: SecretsTarget,
-    id: &str,
-) -> Result<()> {
+pub async fn delete_secrets(s3_client: &Client, target: SecretsTarget, id: &str) -> Result<()> {
     s3_utils::delete_objects_with_prefix(s3_client, bucket_for(target), id)
         .await
         .context("Failed to delete secrets artifacts from S3")?;

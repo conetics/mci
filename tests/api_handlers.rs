@@ -2004,7 +2004,9 @@ async fn patch_definition_secrets_rejects_invalid_result() -> Result<()> {
         .put_object()
         .bucket("definition-secrets")
         .key("sec-def-patch-3/secrets.json")
-        .body(ByteStream::from(serde_json::to_vec(&json!({ "api_key": "sk-123" }))?))
+        .body(ByteStream::from(serde_json::to_vec(
+            &json!({ "api_key": "sk-123" }),
+        )?))
         .send()
         .await?;
 
@@ -2127,7 +2129,10 @@ async fn patch_module_secrets_applies_and_returns_no_content() -> Result<()> {
         .await?;
     let stored_bytes = get_obj.body.collect().await?.into_bytes();
     let stored: JsonValue = serde_json::from_slice(&stored_bytes)?;
-    assert_eq!(stored, json!({ "connection_string": "postgres://secret@db/prod" }));
+    assert_eq!(
+        stored,
+        json!({ "connection_string": "postgres://secret@db/prod" })
+    );
 
     _pg_container.stop().await.ok();
     _s3_container.stop().await.ok();
@@ -2190,7 +2195,10 @@ async fn patch_module_secrets_rejects_invalid_result() -> Result<()> {
         .await?;
     let stored_bytes = get_obj.body.collect().await?.into_bytes();
     let stored: JsonValue = serde_json::from_slice(&stored_bytes)?;
-    assert_eq!(stored, json!({ "connection_string": "postgres://secret@db/prod" }));
+    assert_eq!(
+        stored,
+        json!({ "connection_string": "postgres://secret@db/prod" })
+    );
 
     _pg_container.stop().await.ok();
     _s3_container.stop().await.ok();

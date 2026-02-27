@@ -18,8 +18,8 @@ fn validate_secrets_accepts_valid_payload() {
         "db_password": "hunter2"
     });
 
-    let output = validate_secrets(&schema, &secrets)
-        .expect("validation output should be generated");
+    let output =
+        validate_secrets(&schema, &secrets).expect("validation output should be generated");
 
     assert_eq!(output["valid"], json!(true));
     assert!(output.get("details").is_some());
@@ -42,8 +42,8 @@ fn validate_secrets_rejects_invalid_payload() {
         "enabled": "not-a-bool"
     });
 
-    let output = validate_secrets(&schema, &secrets)
-        .expect("validation output should be generated");
+    let output =
+        validate_secrets(&schema, &secrets).expect("validation output should be generated");
 
     assert_eq!(output["valid"], json!(false));
     assert!(output["details"].as_array().is_some());
@@ -85,8 +85,8 @@ fn validate_secrets_rejects_missing_required_fields() {
         "api_key": "sk-123"
     });
 
-    let output = validate_secrets(&schema, &secrets)
-        .expect("validation output should be generated");
+    let output =
+        validate_secrets(&schema, &secrets).expect("validation output should be generated");
 
     assert_eq!(output["valid"], json!(false));
 }
@@ -106,8 +106,8 @@ fn validate_secrets_rejects_additional_properties() {
         "extra": "not-allowed"
     });
 
-    let output = validate_secrets(&schema, &secrets)
-        .expect("validation output should be generated");
+    let output =
+        validate_secrets(&schema, &secrets).expect("validation output should be generated");
 
     assert_eq!(output["valid"], json!(false));
 }
@@ -123,8 +123,8 @@ fn validate_secrets_accepts_empty_object_when_no_required() {
 
     let secrets = json!({});
 
-    let output = validate_secrets(&schema, &secrets)
-        .expect("validation output should be generated");
+    let output =
+        validate_secrets(&schema, &secrets).expect("validation output should be generated");
 
     assert_eq!(output["valid"], json!(true));
 }

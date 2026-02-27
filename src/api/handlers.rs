@@ -462,8 +462,7 @@ pub async fn get_module_secrets_schema(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<JsonValue>, AppError> {
-    let schema =
-        secrets_services::get_schema(&state.s3_client, SecretsTarget::Module, &id).await?;
+    let schema = secrets_services::get_schema(&state.s3_client, SecretsTarget::Module, &id).await?;
 
     Ok(Json(schema))
 }
