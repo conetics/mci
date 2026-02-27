@@ -1,6 +1,8 @@
 use crate::utils::{json_utils, s3_utils};
 use anyhow::{Context, Result};
-use aws_sdk_s3::{error::SdkError, operation::get_object::GetObjectError, primitives::ByteStream, Client};
+use aws_sdk_s3::{
+    error::SdkError, operation::get_object::GetObjectError, primitives::ByteStream, Client,
+};
 use serde_json::Value as JsonValue;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
