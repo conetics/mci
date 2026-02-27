@@ -2145,7 +2145,7 @@ async fn patch_definition_secrets_rejects_invalid_result() -> Result<()> {
 ///
 /// ```
 /// # async fn run_example() -> anyhow::Result<()> {
-/// let (_pg_container, _s3_container, app, s3_client) = setup_app().await?;
+/// let (pg_container, s3_container, app, s3_client) = setup_app().await?;
 ///
 /// let schema = serde_json::json!({
 ///     "type": "object",
@@ -2171,8 +2171,8 @@ async fn patch_definition_secrets_rejects_invalid_result() -> Result<()> {
 /// let returned: serde_json::Value = serde_json::from_slice(&body)?;
 /// assert_eq!(returned, schema);
 ///
-/// _pg_container.stop().await.ok();
-/// _s3_container.stop().await.ok();
+/// pg_container.stop().await.ok();
+/// s3_container.stop().await.ok();
 /// # Ok(()) }
 /// ```
 #[tokio::test]
