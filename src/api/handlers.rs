@@ -273,10 +273,6 @@ pub async fn get_module(
 ///
 /// Returns `AppError::not_found` if a module with the provided id does not exist.
 /// Other `AppError` variants may be returned for database, S3, or service failures.
-///
-/// # Examples
-///
-///
 pub async fn delete_module(
     State(state): State<AppState>,
     Path(id): Path<String>,
