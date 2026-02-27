@@ -21,8 +21,28 @@ pub struct AppState {
     pub db_pool: db::PgPool,
     pub http_client: reqwest::Client,
     pub s3_client: aws_sdk_s3::Client,
+    pub s3_kms_key_id: Option<String>,
 }
 
+/// Builds the Axum router with API routes, an HTTP tracing layer, and the provided shared application state.
+///
+/// # Examples
+///
+/// ```no_run
+/// use crate::{app, AppState};
+/// use reqwest::Client;
+/// use aws_sdk_s3::Client as S3Client;
+///
+/// // Construct an AppState with real values in application code.
+/// let state = AppState {
+///     db_pool: /* db::PgPool */ unimplemented!(),
+///     http_client: Client::new(),
+///     s3_client: /* S3Client */ unimplemented!(),
+///     s3_kms_key_id: None,
+/// };
+///
+/// let router = app(state);
+/// ```
 pub fn app(app_state: AppState) -> Router {
     Router::new()
         .merge(api::routes::routes())
@@ -30,6 +50,36 @@ pub fn app(app_state: AppState) -> Router {
         .with_state(app_state)
 }
 
+/// Starts the HTTP(S) server and returns a future that drives it along with the bound socket address.
+///
+/// Builds application state (database pool, HTTP client, S3 client and optional S3 KMS key id),
+/// binds a TCP listener to the configured address, and constructs either a TLS-enabled server
+/// when certificate and key paths are provided or an insecure HTTP server otherwise.
+///
+/// # Returns
+///
+/// A tuple containing:
+/// - a future that, when awaited, runs the selected server until completion or error; and
+/// - the actual `SocketAddr` the server bound to.
+///
+/// # Examples
+///
+/// ```no_run
+/// # use tokio::runtime::Runtime;
+/// # use axum_server::Handle;
+/// # use std::net::SocketAddr;
+/// # use crate::config;
+/// let rt = Runtime::new().unwrap();
+/// let config = config::Config::load_from_env().unwrap();
+/// let handle = Handle::new();
+///
+/// rt.block_on(async {
+///     let (server_future, addr): (_, SocketAddr) = serve(&config, handle).await.unwrap();
+///     println!("Server listening on {}", addr);
+///     // Run server (this will block until the server stops)
+///     server_future.await.unwrap();
+/// });
+/// ```
 pub async fn serve(
     config: &config::Config,
     handle: Handle<std::net::SocketAddr>,
@@ -47,10 +97,15 @@ pub async fn serve(
     )
     .await;
 
+    if config.s3_kms_key_id.is_none() {
+        warn!("S3_KMS_KEY_ID is not set. Secrets will be stored without server-side encryption.");
+    }
+
     let app = app(AppState {
         db_pool,
         http_client,
         s3_client,
+        s3_kms_key_id: config.s3_kms_key_id.clone(),
     });
 
     let addr: SocketAddr = config

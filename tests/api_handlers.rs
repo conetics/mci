@@ -21,6 +21,19 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 mod common;
 
+/// Sets up the integration test application environment by starting PostgreSQL and MinIO containers, creating required S3 buckets, and returning the containers, router, and S3 client.
+///
+/// This starts test PostgreSQL and MinIO containers, creates the buckets:
+/// `definitions`, `modules`, `definition-configurations`, `module-configurations`, `definition-secrets`, and `module-secrets`, constructs an AppState with the DB pool, HTTP client, S3 client (no KMS key), and builds the application Router.
+///
+/// # Examples
+///
+/// ```no_run
+/// # async fn example() -> anyhow::Result<()> {
+/// let (pg_container, s3_container, router, s3_client) = setup_app().await?;
+/// // use `router` to drive integration requests and `s3_client` to inspect S3 state
+/// # Ok(()) }
+/// ```
 async fn setup_app() -> Result<(
     ContainerAsync<postgres::Postgres>,
     ContainerAsync<minio::MinIO>,
@@ -46,11 +59,22 @@ async fn setup_app() -> Result<(
         .bucket("module-configurations")
         .send()
         .await?;
+    s3_client
+        .create_bucket()
+        .bucket("definition-secrets")
+        .send()
+        .await?;
+    s3_client
+        .create_bucket()
+        .bucket("module-secrets")
+        .send()
+        .await?;
 
     let state = AppState {
         db_pool: pool,
         http_client: reqwest::Client::new(),
         s3_client: s3_client.clone(),
+        s3_kms_key_id: None,
     };
     let router = app(state);
 
@@ -649,6 +673,21 @@ async fn update_module_rejects_digest() -> Result<()> {
     Ok(())
 }
 
+/// Installs a module from an HTTP registry, then upgrades it when the registry content changes.
+///
+/// This integration test verifies that installing a module from a registry URL fetches the registry
+/// metadata and artifact, stores the module with the expected source URL and digest, and that a
+/// subsequent registry update followed by an update request causes the module to be upgraded
+/// (digest updated and type resolved) while preserving expected name/description semantics.
+///
+/// # Examples
+///
+/// ```
+/// #[tokio::test]
+/// async fn run() -> anyhow::Result<()> {
+///     install_and_upgrade_module_from_http_registry().await
+/// }
+/// ```
 #[tokio::test]
 async fn install_and_upgrade_module_from_http_registry() -> Result<()> {
     let (pg_container, s3_container, app, _) = setup_app().await?;
@@ -752,8 +791,28 @@ async fn install_and_upgrade_module_from_http_registry() -> Result<()> {
     Ok(())
 }
 
-// --- Definition configuration handler tests ---
-
+/// Verifies that the configuration schema for a definition can be retrieved from S3 via the HTTP API.
+///
+/// Stores a JSON schema in the `definition-configurations` bucket and asserts that a GET to
+/// `/definitions/{id}/configuration/schema` returns the same schema.
+///
+/// # Examples
+///
+/// ```no_run
+/// // store schema under definition-configurations/cfg-def-1/configuration.schema.json
+/// // then:
+/// let resp = app
+///     .oneshot(Request::builder()
+///         .method("GET")
+///         .uri("/definitions/cfg-def-1/configuration/schema")
+///         .body(Body::empty())
+///         .unwrap())
+///     .await?;
+/// assert_eq!(resp.status(), StatusCode::OK);
+/// let body = read_body(resp).await?;
+/// let returned: serde_json::Value = serde_json::from_slice(&body)?;
+/// assert_eq!(returned, schema);
+/// ```
 #[tokio::test]
 async fn definition_configuration_schema_get() -> Result<()> {
     let (pg_container, s3_container, app, s3_client) = setup_app().await?;
@@ -817,7 +876,6 @@ async fn definition_configuration_put_and_get_flow() -> Result<()> {
         .send()
         .await?;
 
-    // PUT valid configuration
     let config = json!({ "enabled": true, "name": "hello" });
 
     let put_resp = app
@@ -862,7 +920,6 @@ async fn definition_configuration_put_and_get_flow() -> Result<()> {
 async fn delete_definition_also_deletes_configuration() -> Result<()> {
     let (pg_container, s3_container, app, s3_client) = setup_app().await?;
 
-    // Create a definition so we can delete it
     let temp_dir = tempfile::TempDir::new()?;
     let file_path = temp_dir.path().join("def.json");
     let file_body = br#"{"hello":"world"}"#;
@@ -891,7 +948,6 @@ async fn delete_definition_also_deletes_configuration() -> Result<()> {
         .await?;
     assert_eq!(create_resp.status(), StatusCode::CREATED);
 
-    // Seed configuration objects
     let schema = json!({ "type": "object", "properties": { "enabled": { "type": "boolean" } } });
     let config = json!({ "enabled": true });
 
@@ -911,7 +967,6 @@ async fn delete_definition_also_deletes_configuration() -> Result<()> {
         .send()
         .await?;
 
-    // Delete the definition
     let del_resp = app
         .clone()
         .oneshot(
@@ -924,7 +979,6 @@ async fn delete_definition_also_deletes_configuration() -> Result<()> {
         .await?;
     assert_eq!(del_resp.status(), StatusCode::NO_CONTENT);
 
-    // Verify configuration artifacts are also gone
     let listing = s3_client
         .list_objects_v2()
         .bucket("definition-configurations")
@@ -938,6 +992,98 @@ async fn delete_definition_also_deletes_configuration() -> Result<()> {
     Ok(())
 }
 
+#[tokio::test]
+async fn delete_definition_also_deletes_secrets() -> Result<()> {
+    let (pg_container, s3_container, app, s3_client) = setup_app().await?;
+
+    let temp_dir = tempfile::TempDir::new()?;
+    let file_path = temp_dir.path().join("def.json");
+    let file_body = br#"{"hello":"world"}"#;
+    std::fs::write(&file_path, file_body)?;
+    let digest = format!("sha256:{:x}", Sha256::digest(file_body));
+
+    let create_payload = json!({
+        "id": "sec-def-del",
+        "name": "Def With Secrets",
+        "type": "test-type",
+        "description": "Will be deleted",
+        "file_url": file_path.to_string_lossy(),
+        "digest": digest,
+    });
+
+    let create_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/definitions")
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&create_payload)?))
+                .unwrap(),
+        )
+        .await?;
+    assert_eq!(create_resp.status(), StatusCode::CREATED);
+
+    let schema = json!({
+        "type": "object",
+        "properties": { "api_key": { "type": "string" } },
+        "required": ["api_key"]
+    });
+    let secrets = json!({ "api_key": "sk-secret-123" });
+
+    s3_client
+        .put_object()
+        .bucket("definition-secrets")
+        .key("sec-def-del/secrets.schema.json")
+        .body(ByteStream::from(serde_json::to_vec(&schema)?))
+        .send()
+        .await?;
+
+    s3_client
+        .put_object()
+        .bucket("definition-secrets")
+        .key("sec-def-del/secrets.json")
+        .body(ByteStream::from(serde_json::to_vec(&secrets)?))
+        .send()
+        .await?;
+
+    let del_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/definitions/sec-def-del")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await?;
+    assert_eq!(del_resp.status(), StatusCode::NO_CONTENT);
+
+    let listing = s3_client
+        .list_objects_v2()
+        .bucket("definition-secrets")
+        .prefix("sec-def-del/")
+        .send()
+        .await?;
+    assert!(listing.contents().is_empty());
+
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
+    Ok(())
+}
+
+/// Verifies that storing a configuration that does not match its JSON Schema is rejected and not persisted.
+///
+/// The test uploads a schema requiring `enabled` to be a boolean, attempts to PUT a configuration where
+/// `enabled` is a string, and asserts the service responds with 500 Internal Server Error and that no
+/// configuration object was written to the `definition-configurations` bucket.
+///
+/// # Examples
+///
+/// ```ignore
+/// // This test is executed with #[tokio::test] in the test suite.
+/// // It demonstrates the expected behavior: invalid config is rejected and not stored.
+/// ```
 #[tokio::test]
 async fn definition_configuration_put_rejects_invalid() -> Result<()> {
     let (pg_container, s3_container, app, s3_client) = setup_app().await?;
@@ -973,7 +1119,6 @@ async fn definition_configuration_put_rejects_invalid() -> Result<()> {
 
     assert_eq!(put_resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
 
-    // Verify nothing was stored
     let listing = s3_client
         .list_objects_v2()
         .bucket("definition-configurations")
@@ -998,7 +1143,6 @@ async fn definition_configuration_get_returns_validation_errors() -> Result<()> 
         "additionalProperties": false
     });
 
-    // Seed a config that doesn't match the schema (simulating drift)
     let bad_config = json!({ "enabled": 42 });
 
     s3_client
@@ -1040,8 +1184,6 @@ async fn definition_configuration_get_returns_validation_errors() -> Result<()> 
     s3_container.stop().await.ok();
     Ok(())
 }
-
-// --- Module configuration handler tests ---
 
 #[tokio::test]
 async fn module_configuration_schema_get() -> Result<()> {
@@ -1105,7 +1247,6 @@ async fn module_configuration_put_and_get_flow() -> Result<()> {
         .send()
         .await?;
 
-    // PUT valid configuration
     let config = json!({ "port": 8080, "host": "localhost" });
 
     let put_resp = app
@@ -1122,7 +1263,6 @@ async fn module_configuration_put_and_get_flow() -> Result<()> {
 
     assert_eq!(put_resp.status(), StatusCode::NO_CONTENT);
 
-    // GET returns config + validation
     let get_resp = app
         .clone()
         .oneshot(
@@ -1147,11 +1287,21 @@ async fn module_configuration_put_and_get_flow() -> Result<()> {
     Ok(())
 }
 
+/// Ensures deleting a module also removes its configuration and schema objects from S3.
+///
+/// Creates a module with an artifact, stores a configuration schema and configuration under
+/// the module's key in the `module-configurations` bucket, deletes the module via the API,
+/// and verifies the S3 bucket contains no objects for that module afterwards.
+///
+/// # Examples
+///
+/// ```no_run
+/// // This is an integration test; run with `cargo test` (may require test containers).
+/// ```
 #[tokio::test]
 async fn delete_module_also_deletes_configuration() -> Result<()> {
     let (pg_container, s3_container, app, s3_client) = setup_app().await?;
 
-    // Create a module so we can delete it
     let temp_dir = tempfile::TempDir::new()?;
     let file_path = temp_dir.path().join("module.wasm");
     let file_body = b"\0asm\x01\0\0\0";
@@ -1180,7 +1330,6 @@ async fn delete_module_also_deletes_configuration() -> Result<()> {
         .await?;
     assert_eq!(create_resp.status(), StatusCode::CREATED);
 
-    // Seed configuration objects
     let schema = json!({ "type": "object", "properties": { "port": { "type": "integer" } } });
     let config = json!({ "port": 8080 });
 
@@ -1200,7 +1349,6 @@ async fn delete_module_also_deletes_configuration() -> Result<()> {
         .send()
         .await?;
 
-    // Delete the module
     let del_resp = app
         .clone()
         .oneshot(
@@ -1213,11 +1361,90 @@ async fn delete_module_also_deletes_configuration() -> Result<()> {
         .await?;
     assert_eq!(del_resp.status(), StatusCode::NO_CONTENT);
 
-    // Verify configuration artifacts are also gone
     let listing = s3_client
         .list_objects_v2()
         .bucket("module-configurations")
         .prefix("cfg-mod-del/")
+        .send()
+        .await?;
+    assert!(listing.contents().is_empty());
+
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
+    Ok(())
+}
+
+#[tokio::test]
+async fn delete_module_also_deletes_secrets() -> Result<()> {
+    let (pg_container, s3_container, app, s3_client) = setup_app().await?;
+
+    let temp_dir = tempfile::TempDir::new()?;
+    let file_path = temp_dir.path().join("module.wasm");
+    let file_body = b"\0asm\x01\0\0\0";
+    std::fs::write(&file_path, file_body)?;
+    let digest = format!("sha256:{:x}", Sha256::digest(file_body));
+
+    let create_payload = json!({
+        "id": "sec-mod-del",
+        "name": "Module With Secrets",
+        "type": "proxy",
+        "description": "Will be deleted",
+        "file_url": file_path.to_string_lossy(),
+        "digest": digest,
+    });
+
+    let create_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/modules")
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&create_payload)?))
+                .unwrap(),
+        )
+        .await?;
+    assert_eq!(create_resp.status(), StatusCode::CREATED);
+
+    let schema = json!({
+        "type": "object",
+        "properties": { "connection_string": { "type": "string" } },
+        "required": ["connection_string"]
+    });
+    let secrets = json!({ "connection_string": "postgres://secret@db/prod" });
+
+    s3_client
+        .put_object()
+        .bucket("module-secrets")
+        .key("sec-mod-del/secrets.schema.json")
+        .body(ByteStream::from(serde_json::to_vec(&schema)?))
+        .send()
+        .await?;
+
+    s3_client
+        .put_object()
+        .bucket("module-secrets")
+        .key("sec-mod-del/secrets.json")
+        .body(ByteStream::from(serde_json::to_vec(&secrets)?))
+        .send()
+        .await?;
+
+    let del_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/modules/sec-mod-del")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await?;
+    assert_eq!(del_resp.status(), StatusCode::NO_CONTENT);
+
+    let listing = s3_client
+        .list_objects_v2()
+        .bucket("module-secrets")
+        .prefix("sec-mod-del/")
         .send()
         .await?;
     assert!(listing.contents().is_empty());
@@ -1392,6 +1619,19 @@ async fn definition_configuration_patch_applies_operations() -> Result<()> {
     Ok(())
 }
 
+/// Verifies that PATCHing a definition configuration applies to an initially empty object when no prior configuration exists.
+///
+/// This test stores a JSON Schema for a definition configuration that accepts a boolean `enabled` property,
+/// sends a JSON Patch that adds `enabled: true` to the configuration, and asserts the stored result equals the patched object.
+///
+/// # Examples
+///
+/// ```
+/// // Arrange: ensure a configuration schema exists for `cfg-def-patch-2` allowing a boolean `enabled`
+/// // Act: send a JSON Patch `[{"op":"add","path":"/enabled","value": true}]` to
+/// // `/definitions/cfg-def-patch-2/configuration`
+/// // Assert: the endpoint responds OK and the resulting configuration equals `{ "enabled": true }`
+/// ```
 #[tokio::test]
 async fn definition_configuration_patch_defaults_to_empty_object() -> Result<()> {
     let (pg_container, s3_container, app, s3_client) = setup_app().await?;
@@ -1404,7 +1644,6 @@ async fn definition_configuration_patch_defaults_to_empty_object() -> Result<()>
         "additionalProperties": false
     });
 
-    // Only seed the schema, no existing configuration
     s3_client
         .put_object()
         .bucket("definition-configurations")
@@ -1471,7 +1710,6 @@ async fn definition_configuration_patch_rejects_invalid_result() -> Result<()> {
         .send()
         .await?;
 
-    // This patch would add a field not allowed by additionalProperties: false
     let patch_ops = json!([
         { "op": "add", "path": "/extra", "value": "not allowed" }
     ]);
@@ -1490,7 +1728,6 @@ async fn definition_configuration_patch_rejects_invalid_result() -> Result<()> {
 
     assert_eq!(patch_resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
 
-    // Verify original config is unchanged
     let get_obj = s3_client
         .get_object()
         .bucket("definition-configurations")
@@ -1536,7 +1773,6 @@ async fn definition_configuration_patch_test_op_failure() -> Result<()> {
         .send()
         .await?;
 
-    // The test op will fail because enabled is true, not false
     let patch_ops = json!([
         { "op": "test", "path": "/enabled", "value": false },
         { "op": "replace", "path": "/enabled", "value": false }
@@ -1554,15 +1790,12 @@ async fn definition_configuration_patch_test_op_failure() -> Result<()> {
         )
         .await?;
 
-    // Patch apply itself fails -> 500 (anyhow error)
     assert_eq!(patch_resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
 
     pg_container.stop().await.ok();
     s3_container.stop().await.ok();
     Ok(())
 }
-
-// --- Module configuration PATCH tests ---
 
 #[tokio::test]
 async fn module_configuration_patch_applies_operations() -> Result<()> {
@@ -1655,7 +1888,6 @@ async fn module_configuration_patch_rejects_invalid_result() -> Result<()> {
         .send()
         .await?;
 
-    // Removing a required field should fail validation
     let patch_ops = json!([
         { "op": "remove", "path": "/port" }
     ]);
@@ -1674,7 +1906,6 @@ async fn module_configuration_patch_rejects_invalid_result() -> Result<()> {
 
     assert_eq!(patch_resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
 
-    // Verify original config is unchanged
     let get_obj = s3_client
         .get_object()
         .bucket("module-configurations")
@@ -1687,5 +1918,429 @@ async fn module_configuration_patch_rejects_invalid_result() -> Result<()> {
 
     pg_container.stop().await.ok();
     s3_container.stop().await.ok();
+    Ok(())
+}
+
+#[tokio::test]
+async fn get_definition_secrets_schema_returns_schema() -> Result<()> {
+    let (_pg_container, _s3_container, app, s3_client) = setup_app().await?;
+
+    let schema = json!({
+        "type": "object",
+        "properties": {
+            "api_key": { "type": "string" }
+        },
+        "required": ["api_key"]
+    });
+
+    s3_client
+        .put_object()
+        .bucket("definition-secrets")
+        .key("sec-def-schema-1/secrets.schema.json")
+        .body(ByteStream::from(serde_json::to_vec(&schema)?))
+        .send()
+        .await?;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/definitions/sec-def-schema-1/secrets/schema")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await?;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = read_body(response).await?;
+    let returned: JsonValue = serde_json::from_slice(&body)?;
+    assert_eq!(returned, schema);
+
+    _pg_container.stop().await.ok();
+    _s3_container.stop().await.ok();
+    Ok(())
+}
+
+#[tokio::test]
+async fn patch_definition_secrets_applies_and_returns_no_content() -> Result<()> {
+    let (_pg_container, _s3_container, app, s3_client) = setup_app().await?;
+
+    let schema = json!({
+        "type": "object",
+        "properties": {
+            "api_key": { "type": "string" },
+            "db_password": { "type": "string" }
+        },
+        "required": ["api_key"]
+    });
+
+    s3_client
+        .put_object()
+        .bucket("definition-secrets")
+        .key("sec-def-patch-1/secrets.schema.json")
+        .body(ByteStream::from(serde_json::to_vec(&schema)?))
+        .send()
+        .await?;
+
+    let patch_ops = json!([
+        { "op": "add", "path": "/api_key", "value": "sk-secret-123" }
+    ]);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri("/definitions/sec-def-patch-1/secrets")
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&patch_ops)?))
+                .unwrap(),
+        )
+        .await?;
+
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    let body = read_body(response).await?;
+    assert!(body.is_empty());
+
+    let get_obj = s3_client
+        .get_object()
+        .bucket("definition-secrets")
+        .key("sec-def-patch-1/secrets.json")
+        .send()
+        .await?;
+    let stored_bytes = get_obj.body.collect().await?.into_bytes();
+    let stored: JsonValue = serde_json::from_slice(&stored_bytes)?;
+    assert_eq!(stored, json!({ "api_key": "sk-secret-123" }));
+
+    _pg_container.stop().await.ok();
+    _s3_container.stop().await.ok();
+    Ok(())
+}
+
+#[tokio::test]
+async fn patch_definition_secrets_defaults_to_empty_object() -> Result<()> {
+    let (_pg_container, _s3_container, app, s3_client) = setup_app().await?;
+
+    let schema = json!({
+        "type": "object",
+        "properties": {
+            "token": { "type": "string" }
+        }
+    });
+
+    s3_client
+        .put_object()
+        .bucket("definition-secrets")
+        .key("sec-def-patch-2/secrets.schema.json")
+        .body(ByteStream::from(serde_json::to_vec(&schema)?))
+        .send()
+        .await?;
+
+    let patch_ops = json!([
+        { "op": "add", "path": "/token", "value": "tok-abc" }
+    ]);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri("/definitions/sec-def-patch-2/secrets")
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&patch_ops)?))
+                .unwrap(),
+        )
+        .await?;
+
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+    let get_obj = s3_client
+        .get_object()
+        .bucket("definition-secrets")
+        .key("sec-def-patch-2/secrets.json")
+        .send()
+        .await?;
+    let stored_bytes = get_obj.body.collect().await?.into_bytes();
+    let stored: JsonValue = serde_json::from_slice(&stored_bytes)?;
+    assert_eq!(stored, json!({ "token": "tok-abc" }));
+
+    _pg_container.stop().await.ok();
+    _s3_container.stop().await.ok();
+    Ok(())
+}
+
+/// Verifies that removing a required secret property via JSON Patch is rejected and does not modify stored secrets.
+///
+/// The test stores a secrets schema requiring `api_key` and an existing `secrets.json` containing `api_key`,
+/// then sends a PATCH that removes `/api_key`. The request must fail with an internal server error and the
+/// persisted `secrets.json` must remain unchanged.
+///
+/// # Examples
+///
+/// ```
+/// // Stores a schema requiring `api_key`, seeds secrets.json with {"api_key": "sk-123"},
+/// // sends a PATCH that removes `/api_key`, expects failure and unchanged stored secrets.
+/// ```
+#[tokio::test]
+async fn patch_definition_secrets_rejects_invalid_result() -> Result<()> {
+    let (_pg_container, _s3_container, app, s3_client) = setup_app().await?;
+
+    let schema = json!({
+        "type": "object",
+        "properties": {
+            "api_key": { "type": "string" }
+        },
+        "required": ["api_key"]
+    });
+
+    s3_client
+        .put_object()
+        .bucket("definition-secrets")
+        .key("sec-def-patch-3/secrets.schema.json")
+        .body(ByteStream::from(serde_json::to_vec(&schema)?))
+        .send()
+        .await?;
+
+    s3_client
+        .put_object()
+        .bucket("definition-secrets")
+        .key("sec-def-patch-3/secrets.json")
+        .body(ByteStream::from(serde_json::to_vec(
+            &json!({ "api_key": "sk-123" }),
+        )?))
+        .send()
+        .await?;
+
+    let patch_ops = json!([
+        { "op": "remove", "path": "/api_key" }
+    ]);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri("/definitions/sec-def-patch-3/secrets")
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&patch_ops)?))
+                .unwrap(),
+        )
+        .await?;
+
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+    let get_obj = s3_client
+        .get_object()
+        .bucket("definition-secrets")
+        .key("sec-def-patch-3/secrets.json")
+        .send()
+        .await?;
+    let stored_bytes = get_obj.body.collect().await?.into_bytes();
+    let stored: JsonValue = serde_json::from_slice(&stored_bytes)?;
+    assert_eq!(stored, json!({ "api_key": "sk-123" }));
+
+    _pg_container.stop().await.ok();
+    _s3_container.stop().await.ok();
+    Ok(())
+}
+
+#[tokio::test]
+async fn get_module_secrets_schema_returns_schema() -> Result<()> {
+    let (_pg_container, _s3_container, app, s3_client) = setup_app().await?;
+
+    let schema = json!({
+        "type": "object",
+        "properties": {
+            "connection_string": { "type": "string" }
+        },
+        "required": ["connection_string"]
+    });
+
+    s3_client
+        .put_object()
+        .bucket("module-secrets")
+        .key("sec-mod-schema-1/secrets.schema.json")
+        .body(ByteStream::from(serde_json::to_vec(&schema)?))
+        .send()
+        .await?;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/modules/sec-mod-schema-1/secrets/schema")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await?;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = read_body(response).await?;
+    let returned: JsonValue = serde_json::from_slice(&body)?;
+    assert_eq!(returned, schema);
+
+    _pg_container.stop().await.ok();
+    _s3_container.stop().await.ok();
+    Ok(())
+}
+
+/// Applies a JSON Patch to a module's secrets, asserts the handler responds with 204 No Content,
+/// and verifies the patched secrets are persisted to S3.
+///
+/// # Examples
+///
+/// ```
+/// # use serde_json::json;
+/// # async fn example() -> anyhow::Result<()> {
+/// let (_pg, _s3, app, s3_client) = setup_app().await?;
+///
+/// // store schema
+/// let schema = json!({
+///     "type": "object",
+///     "properties": { "connection_string": { "type": "string" } },
+///     "required": ["connection_string"]
+/// });
+/// s3_client
+///     .put_object()
+///     .bucket("module-secrets")
+///     .key("sec-mod-patch-1/secrets.schema.json")
+///     .body(ByteStream::from(serde_json::to_vec(&schema)?))
+///     .send()
+///     .await?;
+///
+/// // apply patch
+/// let patch_ops = json!([ { "op": "add", "path": "/connection_string", "value": "postgres://secret@db/prod" } ]);
+/// let response = app
+///     .clone()
+///     .oneshot(
+///         Request::builder()
+///             .method("PATCH")
+///             .uri("/modules/sec-mod-patch-1/secrets")
+///             .header(http::header::CONTENT_TYPE, "application/json")
+///             .body(Body::from(serde_json::to_vec(&patch_ops)?))
+///             .unwrap(),
+///     )
+///     .await?;
+///
+/// assert_eq!(response.status(), StatusCode::NO_CONTENT);
+/// # Ok(())
+/// # }
+/// ```
+#[tokio::test]
+async fn patch_module_secrets_applies_and_returns_no_content() -> Result<()> {
+    let (_pg_container, _s3_container, app, s3_client) = setup_app().await?;
+
+    let schema = json!({
+        "type": "object",
+        "properties": {
+            "connection_string": { "type": "string" }
+        },
+        "required": ["connection_string"]
+    });
+
+    s3_client
+        .put_object()
+        .bucket("module-secrets")
+        .key("sec-mod-patch-1/secrets.schema.json")
+        .body(ByteStream::from(serde_json::to_vec(&schema)?))
+        .send()
+        .await?;
+
+    let patch_ops = json!([
+        { "op": "add", "path": "/connection_string", "value": "postgres://secret@db/prod" }
+    ]);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri("/modules/sec-mod-patch-1/secrets")
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&patch_ops)?))
+                .unwrap(),
+        )
+        .await?;
+
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    let body = read_body(response).await?;
+    assert!(body.is_empty());
+
+    let get_obj = s3_client
+        .get_object()
+        .bucket("module-secrets")
+        .key("sec-mod-patch-1/secrets.json")
+        .send()
+        .await?;
+    let stored_bytes = get_obj.body.collect().await?.into_bytes();
+    let stored: JsonValue = serde_json::from_slice(&stored_bytes)?;
+    assert_eq!(
+        stored,
+        json!({ "connection_string": "postgres://secret@db/prod" })
+    );
+
+    _pg_container.stop().await.ok();
+    _s3_container.stop().await.ok();
+    Ok(())
+}
+
+#[tokio::test]
+async fn patch_module_secrets_rejects_invalid_result() -> Result<()> {
+    let (_pg_container, _s3_container, app, s3_client) = setup_app().await?;
+
+    let schema = json!({
+        "type": "object",
+        "properties": {
+            "connection_string": { "type": "string" }
+        },
+        "required": ["connection_string"]
+    });
+
+    s3_client
+        .put_object()
+        .bucket("module-secrets")
+        .key("sec-mod-patch-2/secrets.schema.json")
+        .body(ByteStream::from(serde_json::to_vec(&schema)?))
+        .send()
+        .await?;
+
+    s3_client
+        .put_object()
+        .bucket("module-secrets")
+        .key("sec-mod-patch-2/secrets.json")
+        .body(ByteStream::from(serde_json::to_vec(
+            &json!({ "connection_string": "postgres://secret@db/prod" }),
+        )?))
+        .send()
+        .await?;
+
+    let patch_ops = json!([
+        { "op": "remove", "path": "/connection_string" }
+    ]);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri("/modules/sec-mod-patch-2/secrets")
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&patch_ops)?))
+                .unwrap(),
+        )
+        .await?;
+
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+    let get_obj = s3_client
+        .get_object()
+        .bucket("module-secrets")
+        .key("sec-mod-patch-2/secrets.json")
+        .send()
+        .await?;
+    let stored_bytes = get_obj.body.collect().await?.into_bytes();
+    let stored: JsonValue = serde_json::from_slice(&stored_bytes)?;
+    assert_eq!(
+        stored,
+        json!({ "connection_string": "postgres://secret@db/prod" })
+    );
+
+    _pg_container.stop().await.ok();
+    _s3_container.stop().await.ok();
     Ok(())
 }

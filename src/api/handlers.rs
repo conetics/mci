@@ -5,6 +5,7 @@ use crate::{
         configuration_services::{self, ConfigurationTarget},
         definitions_services::{self, DefinitionFilter, DefinitionPayload},
         modules_services::{self, ModuleFilter, ModulePayload},
+        secrets_services::{self, SecretsTarget},
     },
     AppState,
 };
@@ -75,6 +76,24 @@ pub async fn get_definition(
     Ok(Json(definition))
 }
 
+/// Deletes a definition and removes its associated configuration and secrets from storage.
+///
+/// This handler removes the definition identified by `id` from the database. If the definition
+/// existed, it also attempts to delete its configuration (errors ignored) and deletes its secrets
+/// (errors propagated).
+///
+/// # Returns
+///
+/// `StatusCode::NO_CONTENT` on successful deletion, or an `AppError` if the definition was not
+/// found or if secrets deletion fails.
+///
+/// # Examples
+///
+/// ```
+/// // Example (conceptual): on success the handler returns NO_CONTENT
+/// // let result = delete_definition(state, Path("def-id".to_string())).await;
+/// // assert_eq!(result.unwrap(), axum::http::StatusCode::NO_CONTENT);
+/// ```
 pub async fn delete_definition(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -97,6 +116,9 @@ pub async fn delete_definition(
     )
     .await
     .ok();
+
+    secrets_services::delete_secrets(&state.s3_client, SecretsTarget::Definition, &id)
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -198,6 +220,30 @@ pub async fn get_module(
     Ok(Json(module))
 }
 
+/// Deletes a module and its associated configuration and secrets.
+///
+/// Removes the module record and attempts to remove its stored configuration and secrets from object storage.
+///
+/// # Returns
+/// `StatusCode::NO_CONTENT` on success.
+///
+/// # Errors
+/// Returns `AppError::not_found` if no module with the given id exists. Other failures propagate as `AppError`.
+///
+/// # Examples
+///
+/// ```
+/// # use axum::extract::{State, Path};
+/// # use axum::http::StatusCode;
+/// # use crate::AppState;
+/// # async fn example(state: AppState, id: String) {
+/// let response = crate::api::handlers::delete_module(State(state), Path(id)).await;
+/// match response {
+///     Ok(StatusCode::NO_CONTENT) => (),
+///     Err(e) => panic!("delete failed: {:?}", e),
+/// }
+/// # }
+/// ```
 pub async fn delete_module(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -220,6 +266,9 @@ pub async fn delete_module(
     )
     .await
     .ok();
+
+    secrets_services::delete_secrets(&state.s3_client, SecretsTarget::Module, &id)
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -400,6 +449,36 @@ pub async fn put_module_configuration(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Apply a JSON Patch (RFC 6902) to a module's configuration and return the resulting configuration.
+///
+/// The request body must be a JSON Patch document; it will be parsed and applied to the module's
+/// configuration stored via the configured S3 backend.
+///
+/// # Parameters
+///
+/// - `id`: Identifier of the module whose configuration will be patched.
+/// - `body`: A JSON Patch (RFC 6902) document describing the modifications.
+///
+/// # Returns
+///
+/// The patched configuration as JSON.
+///
+/// # Errors
+///
+/// Returns a 400 Bad Request `AppError` if the request body is not a valid JSON Patch. Other
+/// errors returned by the underlying configuration service are propagated as `AppError`.
+///
+/// # Examples
+///
+/// ```
+/// use serde_json::json;
+/// use json_patch::Patch;
+///
+/// // Construct a JSON Patch to replace the "replicas" field with 3
+/// let patch_value = json!([{"op":"replace","path":"/replicas","value":3}]);
+/// let patch: Patch = serde_json::from_value(patch_value).expect("valid JSON Patch");
+/// assert_eq!(patch.operations().len(), 1);
+/// ```
 pub async fn patch_module_configuration(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -417,4 +496,139 @@ pub async fn patch_module_configuration(
     .await?;
 
     Ok(Json(patched))
+}
+
+/// Fetches the secrets schema for a definition.
+///
+/// Retrieves the secrets schema associated with the definition identified by `id`.
+///
+/// # Returns
+///
+/// The secrets schema as a JSON value.
+///
+/// # Examples
+///
+/// ```
+/// # use axum::extract::{State, Path};
+/// # use serde_json::json;
+/// # use crate::api::handlers::get_definition_secrets_schema;
+/// # use crate::AppState;
+/// # async fn example(state: AppState) {
+/// let id = "example-definition".to_string();
+/// let result = get_definition_secrets_schema(State(state), Path(id)).await;
+/// let schema_json = result.unwrap().0;
+/// assert!(schema_json.is_object());
+/// # }
+/// ```
+pub async fn get_definition_secrets_schema(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<JsonValue>, AppError> {
+    let schema =
+        secrets_services::get_schema(&state.s3_client, SecretsTarget::Definition, &id).await?;
+
+    Ok(Json(schema))
+}
+
+/// Applies a JSON Patch to the secrets of the specified definition and persists the changes.
+///
+/// Parses the incoming JSON body as a `json_patch::Patch`, applies it to the definition's secrets
+/// in S3 using the configured KMS key when present, and returns HTTP 204 on success.
+///
+/// # Examples
+///
+/// ```
+/// let body = serde_json::json!([{
+///     "op": "add",
+///     "path": "/new_secret",
+///     "value": "s3cr3t"
+/// }]);
+///
+/// let patch: json_patch::Patch = serde_json::from_value(body).unwrap();
+/// assert_eq!(patch.0.len(), 1);
+/// ```
+pub async fn patch_definition_secrets(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<JsonValue>,
+) -> Result<StatusCode, AppError> {
+    let operations: json_patch::Patch =
+        serde_json::from_value(body).map_err(|e| AppError::bad_request(e.to_string()))?;
+
+    secrets_services::patch_secrets(
+        &state.s3_client,
+        SecretsTarget::Definition,
+        &id,
+        &operations,
+        state.s3_kms_key_id.as_deref(),
+    )
+    .await?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Retrieve the JSON schema for a module's secrets.
+///
+/// Returns the secrets schema associated with the module identified by `id`.
+///
+/// # Examples
+///
+/// ```
+/// # async fn example() {
+/// // Prepare an AppState with a configured S3 client and a module id.
+/// let state = /* AppState */ unimplemented!();
+/// let id = "module-id".to_string();
+///
+/// // Call the handler and inspect the result.
+/// let result = get_module_secrets_schema(State(state), Path(id)).await;
+/// match result {
+///     Ok(Json(schema)) => { /* use schema (serde_json::Value) */ },
+///     Err(_) => { /* handle error */ },
+/// }
+/// # }
+/// ```
+pub async fn get_module_secrets_schema(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<JsonValue>, AppError> {
+    let schema = secrets_services::get_schema(&state.s3_client, SecretsTarget::Module, &id).await?;
+
+    Ok(Json(schema))
+}
+
+/// Applies a JSON Patch to the secrets for a specific module.
+///
+/// Parses the request body as a `json_patch::Patch` and delegates to the secrets service
+/// to apply the operations to the module identified by `id`. Uses the configured S3
+/// client and optional KMS key from application state. Returns `StatusCode::NO_CONTENT` on success.
+///
+/// # Examples
+///
+/// ```
+/// use serde_json::json;
+/// use json_patch::Patch;
+///
+/// // Build a JSON Patch and ensure it deserializes as expected.
+/// let body = json!([ { "op": "add", "path": "/new_secret", "value": "s3cr3t" } ]);
+/// let patch: Patch = serde_json::from_value(body).unwrap();
+/// assert_eq!(patch.0.len(), 1);
+/// ```
+pub async fn patch_module_secrets(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<JsonValue>,
+) -> Result<StatusCode, AppError> {
+    let operations: json_patch::Patch =
+        serde_json::from_value(body).map_err(|e| AppError::bad_request(e.to_string()))?;
+
+    secrets_services::patch_secrets(
+        &state.s3_client,
+        SecretsTarget::Module,
+        &id,
+        &operations,
+        state.s3_kms_key_id.as_deref(),
+    )
+    .await?;
+
+    Ok(StatusCode::NO_CONTENT)
 }

@@ -4,6 +4,22 @@ use axum::{
     Router,
 };
 
+/// Registers HTTP routes for definition and module resources and returns the configured router.
+///
+/// The router exposes RESTful endpoints for managing "definitions" and "modules",
+/// including listing, creation, installation, retrieval, updates, deletion, configuration,
+/// and secrets-related operations.
+///
+/// # Returns
+///
+/// The configured `Router<AppState>` with all API routes attached.
+///
+/// # Examples
+///
+/// ```
+/// let router = crate::api::routes();
+/// // router can be used with an Axum server, e.g. `axum::Server::bind(&addr).serve(router.into_make_service())`
+/// ```
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/definitions", get(handlers::list_definitions))
@@ -16,8 +32,14 @@ pub fn routes() -> Router<AppState> {
             "/definitions/{id}/update",
             post(handlers::upgrade_definition),
         )
-        // .route("/definitions/{id}/secrets", patch(handlers::put_definition_configuration))
-        // .route("/definitions/{id}/secrets/schema", get(handlers::get_definition_configuration_schema))
+        .route(
+            "/definitions/{id}/secrets",
+            patch(handlers::patch_definition_secrets),
+        )
+        .route(
+            "/definitions/{id}/secrets/schema",
+            get(handlers::get_definition_secrets_schema),
+        )
         .route(
             "/definitions/{id}/configuration",
             get(handlers::get_definition_configuration),
@@ -41,8 +63,14 @@ pub fn routes() -> Router<AppState> {
         .route("/modules/{id}", patch(handlers::update_module))
         .route("/modules/{id}", delete(handlers::delete_module))
         .route("/modules/{id}/update", post(handlers::upgrade_module))
-        // .route("/modules/{id}/secrets", patch(handlers::put_module_configuration))
-        // .route("/modules/{id}/secrets/schema", get(handlers::get_module_configuration_schema))
+        .route(
+            "/modules/{id}/secrets",
+            patch(handlers::patch_module_secrets),
+        )
+        .route(
+            "/modules/{id}/secrets/schema",
+            get(handlers::get_module_secrets_schema),
+        )
         .route(
             "/modules/{id}/configuration",
             get(handlers::get_module_configuration),

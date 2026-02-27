@@ -140,12 +140,28 @@ pub async fn patch_configuration(
     Ok(patched)
 }
 
+/// Deletes all configuration artifacts for an ID from the target S3 bucket.
+///
+/// The function removes every object stored under the S3 key prefix "`{id}/`" in the bucket
+/// associated with `target`. Returns an error if the deletion operation fails.
+///
+/// # Examples
+///
+/// ```no_run
+/// # use aws_sdk_s3::Client;
+/// # use crate::ConfigurationTarget;
+/// # async fn example(s3_client: &Client) -> anyhow::Result<()> {
+/// delete_configuration(s3_client, ConfigurationTarget::Definition, "example-id").await?;
+/// # Ok(())
+/// # }
+/// ```
 pub async fn delete_configuration(
     s3_client: &Client,
     target: ConfigurationTarget,
     id: &str,
 ) -> Result<()> {
-    s3_utils::delete_objects_with_prefix(s3_client, bucket_for(target), id)
+    let prefix = format!("{}/", id);
+    s3_utils::delete_objects_with_prefix(s3_client, bucket_for(target), &prefix)
         .await
         .context("Failed to delete configuration artifacts from S3")?;
 
