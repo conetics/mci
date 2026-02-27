@@ -1,6 +1,6 @@
 use crate::utils::{json_utils, s3_utils};
 use anyhow::{Context, Result};
-use aws_sdk_s3::{primitives::ByteStream, Client};
+use aws_sdk_s3::{error::SdkError, operation::get_object::GetObjectError, primitives::ByteStream, Client};
 use serde_json::Value as JsonValue;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,14 +41,24 @@ pub async fn get_schema(s3_client: &Client, target: SecretsTarget, id: &str) -> 
     serde_json::from_slice(&bytes).context("Failed to deserialize secrets schema JSON")
 }
 
-async fn get_secrets(s3_client: &Client, target: SecretsTarget, id: &str) -> Result<JsonValue> {
-    let response = s3_client
+async fn get_secrets(
+    s3_client: &Client,
+    target: SecretsTarget,
+    id: &str,
+) -> Result<Option<JsonValue>> {
+    let response = match s3_client
         .get_object()
         .bucket(bucket_for(target))
         .key(format!("{}/secrets.json", id))
         .send()
         .await
-        .context("Failed to get secrets from S3")?;
+    {
+        Ok(output) => output,
+        Err(SdkError::ServiceError(err)) if matches!(err.err(), GetObjectError::NoSuchKey(_)) => {
+            return Ok(None);
+        }
+        Err(e) => return Err(e).context("Failed to get secrets from S3"),
+    };
     let bytes = response
         .body
         .collect()
@@ -56,7 +66,9 @@ async fn get_secrets(s3_client: &Client, target: SecretsTarget, id: &str) -> Res
         .context("Failed to read secrets stream")?
         .into_bytes();
 
-    serde_json::from_slice(&bytes).context("Failed to deserialize secrets JSON")
+    serde_json::from_slice(&bytes)
+        .map(Some)
+        .context("Failed to deserialize secrets JSON")
 }
 
 pub async fn patch_secrets(
@@ -66,10 +78,9 @@ pub async fn patch_secrets(
     operations: &json_patch::Patch,
     kms_key_id: Option<&str>,
 ) -> Result<()> {
-    let current = match get_secrets(s3_client, target, id).await {
-        Ok(secrets) => secrets,
-        Err(_) => serde_json::json!({}),
-    };
+    let current = get_secrets(s3_client, target, id)
+        .await?
+        .unwrap_or_else(|| serde_json::json!({}));
 
     let patched = json_utils::apply_patch(&current, operations)?;
 
