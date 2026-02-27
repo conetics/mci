@@ -9,6 +9,7 @@ use crate::{
     },
     AppState,
 };
+use tracing::warn;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -111,16 +112,44 @@ pub async fn delete_definition(
         )));
     }
 
-    configuration_services::delete_configuration(
+    let config_result = configuration_services::delete_configuration(
         &state.s3_client,
         ConfigurationTarget::Definition,
         &id,
     )
-    .await?;
+    .await;
 
-    secrets_services::delete_secrets(&state.s3_client, SecretsTarget::Definition, &id).await?;
+    let secrets_result =
+        secrets_services::delete_secrets(&state.s3_client, SecretsTarget::Definition, &id).await;
 
-    Ok(StatusCode::NO_CONTENT)
+    match (config_result, secrets_result) {
+        (Ok(()), Ok(())) => Ok(StatusCode::NO_CONTENT),
+        (Err(e), Ok(())) => Err(anyhow::anyhow!(
+            "Definition '{}' was deleted but its configuration could not be removed from S3: {}. \
+             Orphaned configuration objects may remain in the '{}/' prefix.",
+            id, e, id
+        ).into()),
+        (Ok(()), Err(e)) => Err(anyhow::anyhow!(
+            "Definition '{}' was deleted but its secrets could not be removed from S3: {}. \
+             Orphaned secrets objects may remain in the '{}/' prefix.",
+            id, e, id
+        ).into()),
+        (Err(config_err), Err(secrets_err)) => {
+            warn!(
+                definition_id = %id,
+                config_error = %config_err,
+                secrets_error = %secrets_err,
+                "Definition '{}' was deleted but both configuration and secrets \
+                 cleanup failed. Orphaned objects may remain in S3 under the '{}/' prefix.",
+                id, id
+            );
+            Err(anyhow::anyhow!(
+                "Definition '{}' was deleted but S3 cleanup failed for both configuration ({}) \
+                 and secrets ({}). Orphaned objects may remain in the '{}/' prefix.",
+                id, config_err, secrets_err, id
+            ).into())
+        }
+    }
 }
 
 pub async fn update_definition(
@@ -282,16 +311,44 @@ pub async fn delete_module(
         )));
     }
 
-    configuration_services::delete_configuration(
+    let config_result = configuration_services::delete_configuration(
         &state.s3_client,
         ConfigurationTarget::Module,
         &id,
     )
-    .await?;
+    .await;
 
-    secrets_services::delete_secrets(&state.s3_client, SecretsTarget::Module, &id).await?;
+    let secrets_result =
+        secrets_services::delete_secrets(&state.s3_client, SecretsTarget::Module, &id).await;
 
-    Ok(StatusCode::NO_CONTENT)
+    match (config_result, secrets_result) {
+        (Ok(()), Ok(())) => Ok(StatusCode::NO_CONTENT),
+        (Err(e), Ok(())) => Err(anyhow::anyhow!(
+            "Module '{}' was deleted but its configuration could not be removed from S3: {}. \
+             Orphaned configuration objects may remain in the '{}/' prefix.",
+            id, e, id
+        ).into()),
+        (Ok(()), Err(e)) => Err(anyhow::anyhow!(
+            "Module '{}' was deleted but its secrets could not be removed from S3: {}. \
+             Orphaned secrets objects may remain in the '{}/' prefix.",
+            id, e, id
+        ).into()),
+        (Err(config_err), Err(secrets_err)) => {
+            warn!(
+                module_id = %id,
+                config_error = %config_err,
+                secrets_error = %secrets_err,
+                "Module '{}' was deleted but both configuration and secrets \
+                 cleanup failed. Orphaned objects may remain in S3 under the '{}/' prefix.",
+                id, id
+            );
+            Err(anyhow::anyhow!(
+                "Module '{}' was deleted but S3 cleanup failed for both configuration ({}) \
+                 and secrets ({}). Orphaned objects may remain in the '{}/' prefix.",
+                id, config_err, secrets_err, id
+            ).into())
+        }
+    }
 }
 
 pub async fn update_module(
