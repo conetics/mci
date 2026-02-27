@@ -14,6 +14,20 @@
 // 5. Expose the function behind an admin-only endpoint or run it on a
 //    periodic schedule (e.g. tokio cron task) so orphans don't accumulate.
 
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum ServiceError {
+    #[error("{0}")]
+    InvalidChanges(String),
+
+    #[error("Failed to apply JSON patch: {source}")]
+    PatchFailed {
+        #[source]
+        source: anyhow::Error,
+    },
+}
+
 pub mod configuration_services;
 pub mod definitions_services;
 pub mod modules_services;

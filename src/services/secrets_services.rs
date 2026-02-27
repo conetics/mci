@@ -195,7 +195,8 @@ pub async fn patch_secrets(
         .await?
         .unwrap_or_else(|| serde_json::json!({}));
 
-    let patched = json_utils::apply_patch(&current, operations)?;
+    let patched = json_utils::apply_patch(&current, operations)
+        .map_err(|e| super::ServiceError::PatchFailed { source: e })?;
 
     let schema = get_schema(s3_client, target, id).await?;
     let output = validate_secrets(&schema, &patched)?;
@@ -205,7 +206,7 @@ pub async fn patch_secrets(
         .unwrap_or(false);
 
     if !is_valid {
-        anyhow::bail!("Secrets changes are invalid: {}", output);
+        return Err(super::ServiceError::InvalidChanges(format!("Secrets changes are invalid: {}", output)).into());
     }
 
     let body = serde_json::to_vec_pretty(&patched)

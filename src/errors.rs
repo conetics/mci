@@ -186,11 +186,9 @@ impl AppError {
     }
 
     pub fn from_service_error(err: anyhow::Error) -> Self {
-        let msg = err.to_string();
-        if msg.contains("changes are invalid") || msg.contains("Failed to apply JSON patch") {
-            AppError::BadRequest(msg)
-        } else {
-            AppError::Internal(err)
+        match err.downcast::<crate::services::ServiceError>() {
+            Ok(service_err) => AppError::BadRequest(service_err.to_string()),
+            Err(other) => AppError::Internal(other),
         }
     }
 }

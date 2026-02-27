@@ -81,7 +81,7 @@ pub async fn put_configuration(
         .unwrap_or(false);
 
     if !is_valid {
-        anyhow::bail!("Configuration changes are invalid");
+        return Err(super::ServiceError::InvalidChanges("Configuration changes are invalid".into()).into());
     }
 
     let body = serde_json::to_vec_pretty(configuration)
@@ -120,7 +120,8 @@ pub async fn patch_configuration(
         Err(_) => serde_json::json!({}),
     };
 
-    let patched = json_utils::apply_patch(&current, operations)?;
+    let patched = json_utils::apply_patch(&current, operations)
+        .map_err(|e| super::ServiceError::PatchFailed { source: e })?;
 
     let schema = get_schema(s3_client, target, id).await?;
     let output = validate_configuration(&schema, &patched)?;
@@ -130,7 +131,7 @@ pub async fn patch_configuration(
         .unwrap_or(false);
 
     if !is_valid {
-        anyhow::bail!("Configuration changes are invalid");
+        return Err(super::ServiceError::InvalidChanges("Configuration changes are invalid".into()).into());
     }
 
     let body = serde_json::to_vec_pretty(&patched)
