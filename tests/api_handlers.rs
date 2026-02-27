@@ -558,8 +558,8 @@ async fn create_get_update_delete_module_flow() -> Result<()> {
 
     let objects = s3_client
         .list_objects_v2()
-        .bucket("definitions")
-        .prefix("api-def-1/")
+        .bucket("modules")
+        .prefix("api-mod-1/")
         .send()
         .await?;
 

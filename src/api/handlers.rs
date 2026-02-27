@@ -96,8 +96,7 @@ pub async fn delete_definition(
         ConfigurationTarget::Definition,
         &id,
     )
-    .await
-    .ok();
+    .await?;
 
     secrets_services::delete_secrets(&state.s3_client, SecretsTarget::Definition, &id).await?;
 
@@ -221,8 +220,7 @@ pub async fn delete_module(
         ConfigurationTarget::Module,
         &id,
     )
-    .await
-    .ok();
+    .await?;
 
     secrets_services::delete_secrets(&state.s3_client, SecretsTarget::Module, &id).await?;
 
