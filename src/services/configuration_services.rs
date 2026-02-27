@@ -99,6 +99,14 @@ pub async fn put_configuration(
     Ok(())
 }
 
+// TODO: This read-modify-write (get_configuration -> apply_patch -> put_object) has a
+// lost-update race under concurrent PATCH requests. The fix is to capture the
+// S3 ETag from get_configuration and use a conditional PutObject (If-Match) so a
+// concurrent write returns 412/409 instead of being silently overwritten.
+// Deferred: requires verifying MinIO testcontainer compatibility with If-Match
+// on PutObject, adding ETag threading through get_configuration, and designing the
+// client-facing retry/conflict contract. Low priority — configuration patches are
+// infrequent admin operations with minimal concurrency risk.
 pub async fn patch_configuration(
     s3_client: &Client,
     target: ConfigurationTarget,

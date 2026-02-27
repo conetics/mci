@@ -147,6 +147,7 @@ async fn get_secrets(
         .context("Failed to deserialize secrets JSON")
 }
 
+<<<<<<< HEAD
 /// Applies a JSON Patch to the stored secrets for `id`, validates the patched result against the stored schema, and uploads the updated secrets to the appropriate S3 bucket.
 ///
 /// If no existing secrets are found, an empty object `{}` is used as the patch base. On success the updated secrets are written to `{id}/secrets.json` in the bucket resolved from `target`. If `kms_key_id` is provided, server-side encryption with AWS KMS is enabled for the upload.
@@ -173,6 +174,16 @@ async fn get_secrets(
 /// # Ok(())
 /// # }
 /// ```
+=======
+// TODO: This read-modify-write (get_secrets -> apply_patch -> put_object) has a
+// lost-update race under concurrent PATCH requests. The fix is to capture the
+// S3 ETag from get_secrets and use a conditional PutObject (If-Match) so a
+// concurrent write returns 412/409 instead of being silently overwritten.
+// Deferred: requires verifying MinIO testcontainer compatibility with If-Match
+// on PutObject, adding ETag threading through get_secrets, and designing the
+// client-facing retry/conflict contract. Low priority — secrets patches are
+// infrequent admin operations with minimal concurrency risk.
+>>>>>>> fbaa861 (fix: add TODO for handling race update)
 pub async fn patch_secrets(
     s3_client: &Client,
     target: SecretsTarget,
