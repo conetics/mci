@@ -11,6 +11,20 @@ pub enum SecretsTarget {
     Module,
 }
 
+/// Map a SecretsTarget to its corresponding S3 bucket name.
+///
+/// # Examples
+///
+/// ```
+/// let b = bucket_for(SecretsTarget::Definition);
+/// assert_eq!(b, "definition-secrets");
+/// let b2 = bucket_for(SecretsTarget::Module);
+/// assert_eq!(b2, "module-secrets");
+/// ```
+///
+/// # Returns
+///
+/// The S3 bucket name for the given target.
 fn bucket_for(target: SecretsTarget) -> &'static str {
     match target {
         SecretsTarget::Definition => "definition-secrets",
@@ -18,6 +32,26 @@ fn bucket_for(target: SecretsTarget) -> &'static str {
     }
 }
 
+/// Validate a JSON instance against a JSON Schema and return the validator's evaluation as JSON.
+///
+/// The returned JSON is the serialized evaluation list produced by the JSON Schema validator:
+/// an empty array indicates the instance is valid; otherwise the array contains validation entries describing failures.
+///
+/// # Examples
+///
+/// ```
+/// use serde_json::json;
+///
+/// let schema = json!({"type": "object", "properties": {"a": {"type": "string"}}});
+/// let valid = json!({"a": "ok"});
+/// let invalid = json!({"a": 1});
+///
+/// let ok_eval = validate_secrets(&schema, &valid).unwrap();
+/// assert_eq!(ok_eval, json!([]));
+///
+/// let err_eval = validate_secrets(&schema, &invalid).unwrap();
+/// assert!(err_eval.as_array().unwrap().len() > 0);
+/// ```
 pub fn validate_secrets(schema: &JsonValue, secrets: &JsonValue) -> Result<JsonValue> {
     let validator = jsonschema::validator_for(schema).context("Invalid JSON schema")?;
     let evaluation = validator.evaluate(secrets);
@@ -25,6 +59,20 @@ pub fn validate_secrets(schema: &JsonValue, secrets: &JsonValue) -> Result<JsonV
     serde_json::to_value(evaluation.list()).context("Failed to serialize validation output")
 }
 
+/// Fetches and deserializes the secrets JSON Schema for the given target and id from S3.
+///
+/// On success returns the parsed `serde_json::Value` representing the schema. Returns an error
+/// if the S3 object cannot be retrieved, its body cannot be read, or the JSON cannot be parsed.
+///
+/// # Examples
+///
+/// ```
+/// # use crate::services::secrets_services::{get_schema, SecretsTarget};
+/// # async fn example(client: &aws_sdk_s3::Client) {
+/// let schema = get_schema(client, SecretsTarget::Definition, "my-definition").await.unwrap();
+/// assert!(schema.is_object());
+/// # }
+/// ```
 pub async fn get_schema(s3_client: &Client, target: SecretsTarget, id: &str) -> Result<JsonValue> {
     let response = s3_client
         .get_object()
@@ -43,6 +91,32 @@ pub async fn get_schema(s3_client: &Client, target: SecretsTarget, id: &str) -> 
     serde_json::from_slice(&bytes).context("Failed to deserialize secrets schema JSON")
 }
 
+/// Retrieves the secrets JSON for the given target and id from S3.
+///
+/// Attempts to read "{id}/secrets.json" from the bucket for `target`. If the object does not
+/// exist, returns `None`. On success returns the deserialized JSON value of the object.
+///
+/// # Returns
+///
+/// `Some(JsonValue)` with the parsed secrets JSON if the object exists, `None` if the key is not
+/// present, or an error if the S3 request, stream read, or JSON deserialization fails.
+///
+/// # Examples
+///
+/// ```no_run
+/// # use aws_sdk_s3::Client;
+/// # use serde_json::json;
+/// # use futures::executor::block_on;
+/// # async fn example(client: &Client) {
+/// let id = "example-id";
+/// let result = super::get_secrets(client, super::SecretsTarget::Definition, id).await;
+/// match result {
+///     Ok(Some(secrets)) => println!("Secrets: {}", secrets),
+///     Ok(None) => println!("No secrets found for id: {}", id),
+///     Err(e) => eprintln!("Error fetching secrets: {}", e),
+/// }
+/// # }
+/// ```
 async fn get_secrets(
     s3_client: &Client,
     target: SecretsTarget,
@@ -73,6 +147,32 @@ async fn get_secrets(
         .context("Failed to deserialize secrets JSON")
 }
 
+/// Applies a JSON Patch to the stored secrets for `id`, validates the patched result against the stored schema, and uploads the updated secrets to the appropriate S3 bucket.
+///
+/// If no existing secrets are found, an empty object `{}` is used as the patch base. On success the updated secrets are written to `{id}/secrets.json` in the bucket resolved from `target`. If `kms_key_id` is provided, server-side encryption with AWS KMS is enabled for the upload.
+///
+/// # Parameters
+///
+/// - `operations`: JSON Patch to apply to the current secrets.
+/// - `kms_key_id`: Optional KMS Key ID to enable server-side encryption for the uploaded object.
+///
+/// # Returns
+///
+/// `Ok(())` on success, or an error if patch application, validation, serialization, or the S3 upload fails. If validation fails the error message will include the validation output prefixed by "Secrets changes are invalid:".
+///
+/// # Examples
+///
+/// ```no_run
+/// # use aws_sdk_s3::Client;
+/// # use json_patch::Patch;
+/// # use crate::services::secrets_services::{patch_secrets, SecretsTarget};
+/// # async fn example(s3_client: &Client) -> anyhow::Result<()> {
+/// let patch = Patch::new();
+/// let kms: Option<&str> = None;
+/// patch_secrets(s3_client, SecretsTarget::Definition, "my-id", &patch, kms).await?;
+/// # Ok(())
+/// # }
+/// ```
 pub async fn patch_secrets(
     s3_client: &Client,
     target: SecretsTarget,
@@ -119,6 +219,32 @@ pub async fn patch_secrets(
     Ok(())
 }
 
+/// Deletes all secret artifacts under the given identifier in the specified secrets target bucket.
+///
+/// The function removes all objects with the prefix "{id}/" from the S3 bucket mapped to `target`.
+///
+/// # Arguments
+///
+/// * `target` - The secrets target (Definition or Module) used to select the S3 bucket.
+/// * `id` - The identifier whose secret artifacts (objects under the "{id}/" prefix) will be deleted.
+///
+/// # Returns
+///
+/// `Ok(())` on successful deletion, or an error if the S3 deletion operation fails.
+///
+/// # Examples
+///
+/// ```
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// use aws_sdk_s3::Client;
+/// use crate::services::secrets_services::{delete_secrets, SecretsTarget};
+///
+/// // `client` would be an initialized S3 Client; shown here as a placeholder.
+/// let client: Client = unimplemented!();
+/// delete_secrets(&client, SecretsTarget::Definition, "my-resource").await?;
+/// # Ok(())
+/// # }
+/// ```
 pub async fn delete_secrets(s3_client: &Client, target: SecretsTarget, id: &str) -> Result<()> {
     let prefix = format!("{}/", id);
     s3_utils::delete_objects_with_prefix(s3_client, bucket_for(target), &prefix)

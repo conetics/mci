@@ -76,6 +76,26 @@ pub async fn get_definition(
     Ok(Json(definition))
 }
 
+/// Deletes a definition by id and removes its associated configuration and secrets.
+///
+/// Deletes the definition record from the database and, on success, deletes the definition's
+/// configuration and secrets stored in S3. Returns `StatusCode::NO_CONTENT` when deletion
+/// completes successfully; returns an `AppError::not_found` if no definition with the given id exists.
+///
+/// # Returns
+///
+/// `StatusCode::NO_CONTENT` on success; an `AppError` on failure (for example, `not_found` if the
+/// definition does not exist).
+///
+/// # Examples
+///
+/// ```
+/// use http::StatusCode;
+///
+/// // Handler returns NO_CONTENT on successful deletion.
+/// let status = StatusCode::NO_CONTENT;
+/// assert_eq!(status, StatusCode::NO_CONTENT);
+/// ```
 pub async fn delete_definition(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -200,6 +220,53 @@ pub async fn get_module(
     Ok(Json(module))
 }
 
+/// Deletes a module and its associated configuration and secrets.
+
+///
+
+/// Attempts to remove the module record from the database and, on success,
+
+/// deletes the module's stored configuration and secrets from S3. If no
+
+/// module with the given id exists, an `AppError::not_found` is returned.
+
+///
+
+/// # Returns
+
+///
+
+/// `StatusCode::NO_CONTENT` on success.
+
+///
+
+/// # Errors
+
+///
+
+/// Returns `AppError::not_found` if a module with the provided id does not exist.
+
+/// Other `AppError` variants may be returned for database, S3, or service failures.
+
+///
+
+/// # Examples
+
+///
+
+/// ```no_run
+
+/// use axum::http::StatusCode;
+
+///
+
+/// // In an integration test you would call the handler and assert the response:
+
+/// // let response = delete_module(state, axum::extract::Path("module-id".to_string())).await;
+
+/// // assert_eq!(response.unwrap(), StatusCode::NO_CONTENT);
+
+/// ```
 pub async fn delete_module(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -403,6 +470,27 @@ pub async fn put_module_configuration(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Applies a JSON Patch to a module's stored configuration and returns the resulting configuration.
+///
+/// The request body must be a JSON Patch (an array of JSON Patch operations). The handler validates
+/// and parses the patch, applies it to the module configuration stored via the configuration service,
+/// and returns the patched configuration as JSON.
+///
+/// # Returns
+///
+/// The patched configuration as JSON.
+///
+/// # Examples
+///
+/// ```
+/// use serde_json::json;
+/// use json_patch::Patch;
+///
+/// // Example JSON Patch that replaces /name
+/// let patch_value = json!([ { "op": "replace", "path": "/name", "value": "new-name" } ]);
+/// let operations: Patch = serde_json::from_value(patch_value).expect("valid patch");
+/// assert_eq!(operations.operations.len(), 1);
+/// ```
 pub async fn patch_module_configuration(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -422,6 +510,19 @@ pub async fn patch_module_configuration(
     Ok(Json(patched))
 }
 
+/// Fetches the secrets JSON schema for a definition by id.
+///
+/// Returns the secrets schema as a JSON value suitable for validation or inspection.
+///
+/// # Examples
+///
+/// ```no_run
+/// use axum::extract::{State, Path};
+/// use serde_json::json;
+/// use crate::api::handlers::get_definition_secrets_schema;
+/// // Assume `state` is an initialized AppState and `id` is the definition id.
+/// // let response = get_definition_secrets_schema(State(state), Path(id.to_string())).await;
+/// ```
 pub async fn get_definition_secrets_schema(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -432,6 +533,23 @@ pub async fn get_definition_secrets_schema(
     Ok(Json(schema))
 }
 
+/// Applies a JSON Patch to a definition's secrets.
+///
+/// The request body is parsed as a `json_patch::Patch` and applied to the secrets for the definition
+/// identified by `id` using the application's secrets service and optional KMS key. Returns
+/// `StatusCode::NO_CONTENT` on success.
+///
+/// # Examples
+///
+/// ```
+/// use serde_json::json;
+/// use json_patch::Patch;
+///
+/// // Example JSON Patch body to add a secret value
+/// let body = json!([ { "op": "add", "path": "/apiKey", "value": "new-key" } ]);
+/// let patch: Patch = serde_json::from_value(body).unwrap();
+/// // `patch` can then be passed to the secrets service or handler for application.
+/// ```
 pub async fn patch_definition_secrets(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -452,6 +570,25 @@ pub async fn patch_definition_secrets(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Fetches the secrets JSON schema for the specified module.
+///
+/// # Parameters
+///
+/// - `id`: The module identifier to retrieve the secrets schema for.
+///
+/// # Returns
+///
+/// A JSON value containing the secrets schema for the module.
+///
+/// # Examples
+///
+/// ```no_run
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// // `state` and `id` would be provided by the application context in real usage.
+/// // let result = get_module_secrets_schema(State(state), Path(id)).await?;
+/// # Ok(())
+/// # }
+/// ```
 pub async fn get_module_secrets_schema(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -461,6 +598,25 @@ pub async fn get_module_secrets_schema(
     Ok(Json(schema))
 }
 
+/// Applies a JSON Patch to the secrets for the specified module.
+///
+/// Parses the request body as a `json_patch::Patch` and forwards the patch to the secrets service for the module identified by `id`.
+///
+/// # Returns
+///
+/// `StatusCode::NO_CONTENT` on success.
+///
+/// # Examples
+///
+/// ```
+/// use serde_json::json;
+/// use json_patch::Patch;
+///
+/// // Example JSON Patch that replaces "/foo" with "bar"
+/// let patch_value = json!([ { "op": "replace", "path": "/foo", "value": "bar" } ]);
+/// let operations: Patch = serde_json::from_value(patch_value).unwrap();
+/// assert_eq!(operations.operations.len(), 1);
+/// ```
 pub async fn patch_module_secrets(
     State(state): State<AppState>,
     Path(id): Path<String>,

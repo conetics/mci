@@ -33,6 +33,25 @@ fn minimal_config() -> HashMap<&'static str, &'static str> {
     map
 }
 
+/// Verifies that constructing a Config from the minimal valid map yields the expected defaults and provided values.
+///
+/// This test ensures required fields from `minimal_config()` are preserved and that optional fields default to `None`.
+///
+/// # Examples
+///
+/// ```
+/// let config = Config::from_map(minimal_config()).expect("Failed to load config");
+/// assert_eq!(config.database_url, "postgres://localhost/test");
+/// assert_eq!(config.s3_url, "http://localhost:9000");
+/// assert_eq!(config.log_level, "info");
+/// assert_eq!(config.address, "0.0.0.0:7687");
+/// assert_eq!(config.s3_region, "us-east-1");
+/// assert_eq!(config.s3_access_key, "none");
+/// assert_eq!(config.s3_secret_key, "none");
+/// assert_eq!(config.key_path, None);
+/// assert_eq!(config.cert_path, None);
+/// assert_eq!(config.s3_kms_key_id, None);
+/// ```
 #[test]
 fn test_minimal_valid_configuration() {
     let config = Config::from_map(minimal_config()).expect("Failed to load config");

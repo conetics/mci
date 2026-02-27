@@ -4,6 +4,19 @@ use axum::{
     Router,
 };
 
+/// Constructs the HTTP router with all API endpoints for managing definitions and modules.
+///
+/// The returned `Router<AppState>` routes requests to handlers for CRUD operations and related
+/// sub-resources (install, upgrade, secrets, configuration, and their schemas) for both
+/// definitions and modules.
+///
+/// # Examples
+///
+/// ```
+/// use axum::Router;
+/// // `routes` returns a Router<AppState> configured with the service endpoints.
+/// let router: Router<_> = crate::routes();
+/// ```
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/definitions", get(handlers::list_definitions))

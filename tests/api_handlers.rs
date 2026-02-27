@@ -21,6 +21,27 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 mod common;
 
+/// Set up a test application environment with PostgreSQL and MinIO and create the required S3 buckets.
+///
+/// Initializes PostgreSQL and MinIO containers, creates the S3 buckets
+/// `definitions`, `modules`, `definition-configurations`, `module-configurations`,
+/// `definition-secrets`, and `module-secrets`, constructs the application state
+/// (including DB pool, HTTP client, and S3 client), and wires the router to that state.
+///
+/// # Returns
+///
+/// A tuple containing the PostgreSQL container handle, the MinIO container handle,
+/// the configured `Router`, and an `aws_sdk_s3::Client`.
+///
+/// # Examples
+///
+/// ```
+/// # async fn run() -> anyhow::Result<()> {
+/// let (pg_container, s3_container, router, s3_client) = setup_app().await?;
+/// // Use `router` and `s3_client` in integration tests.
+/// # Ok(())
+/// # }
+/// ```
 async fn setup_app() -> Result<(
     ContainerAsync<postgres::Postgres>,
     ContainerAsync<minio::MinIO>,
@@ -660,6 +681,20 @@ async fn update_module_rejects_digest() -> Result<()> {
     Ok(())
 }
 
+/// Installs a module from an HTTP registry, then simulates a registry upgrade and verifies the module is updated.
+///
+/// This test exercises the install-from-registry flow (POST /modules/install) and the update flow (POST /modules/{id}/update),
+/// asserting that the installed module records the registry source and that an upgrade replaces the stored module artifact
+/// while preserving the original registry-provided metadata where expected.
+///
+/// # Examples
+///
+/// ```
+/// // Run the integration test (usually executed by the test harness)
+/// tokio_test::block_on(async {
+///     install_and_upgrade_module_from_http_registry().await.unwrap();
+/// });
+/// ```
 #[tokio::test]
 async fn install_and_upgrade_module_from_http_registry() -> Result<()> {
     let (pg_container, s3_container, app, _) = setup_app().await?;
@@ -1022,6 +1057,20 @@ async fn delete_definition_also_deletes_secrets() -> Result<()> {
     Ok(())
 }
 
+/// Verifies that putting an invalid configuration against a definition is rejected and not stored.
+///
+/// This test uploads a JSON Schema requiring a boolean `enabled` property, attempts to PUT a configuration
+/// where `enabled` is a string, asserts the handler responds with HTTP 500, and confirms no configuration
+/// object was written to S3.
+///
+/// # Examples
+///
+/// ```
+/// // Equivalent test flow:
+/// // 1. Upload schema to S3 at definition-configurations/cfg-def-3/configuration.schema.json
+/// // 2. PUT /definitions/cfg-def-3/configuration with `{ "enabled": "not-a-bool" }`
+/// // 3. Expect 500 response and no configuration.json written in S3
+/// ```
 #[tokio::test]
 async fn definition_configuration_put_rejects_invalid() -> Result<()> {
     let (pg_container, s3_container, app, s3_client) = setup_app().await?;
@@ -1070,6 +1119,16 @@ async fn definition_configuration_put_rejects_invalid() -> Result<()> {
     Ok(())
 }
 
+/// Verifies that retrieving a definition's configuration returns the stored configuration along with validation results when the configuration violates its schema.
+///
+/// This test stores a JSON Schema and a configuration that does not conform to that schema in S3, then issues a GET to the configuration endpoint and asserts the response contains the original configuration and `validation.valid == false`.
+///
+/// # Examples
+///
+/// ```
+/// // Stores a schema requiring `enabled` as a boolean and a bad configuration where `enabled` is a number,
+/// // then GET /definitions/cfg-def-4/configuration should return the configuration and validation.valid == false.
+/// ```
 #[tokio::test]
 async fn definition_configuration_get_returns_validation_errors() -> Result<()> {
     let (pg_container, s3_container, app, s3_client) = setup_app().await?;
@@ -1163,6 +1222,20 @@ async fn module_configuration_schema_get() -> Result<()> {
     Ok(())
 }
 
+/// Verifies that putting a valid module configuration stores it and that it can be retrieved with successful schema validation.
+///
+/// This test ensures the PUT /modules/{id}/configuration endpoint accepts a configuration that matches the stored JSON Schema,
+/// stores it in S3, and that GET /modules/{id}/configuration returns the stored configuration along with a validation result of `true`.
+///
+/// # Examples
+///
+/// ```
+/// // Arrange: upload a JSON Schema for module configuration (port: integer required)
+/// // Act: PUT a configuration `{ "port": 8080, "host": "localhost" }` to /modules/cfg-mod-2/configuration
+/// // Assert: PUT responds with 204 No Content
+/// // Act: GET /modules/cfg-mod-2/configuration
+/// // Assert: GET responds with 200 OK and body contains the same configuration and `"validation": { "valid": true }`
+/// ```
 #[tokio::test]
 async fn module_configuration_put_and_get_flow() -> Result<()> {
     let (pg_container, s3_container, app, s3_client) = setup_app().await?;
@@ -1301,6 +1374,18 @@ async fn delete_module_also_deletes_configuration() -> Result<()> {
     Ok(())
 }
 
+/// Verifies that deleting a module also removes its secrets stored in the `module-secrets` S3 bucket.
+///
+/// This test creates a module, uploads a secrets schema and secrets JSON under the
+/// `module-secrets/sec-mod-del/` prefix, deletes the module via the API, and asserts that
+/// no objects remain under that S3 prefix afterward.
+///
+/// # Examples
+///
+/// ```
+/// // Create a module, store secrets at "module-secrets/sec-mod-del/", delete the module,
+/// // then assert the S3 listing for that prefix is empty.
+/// ```
 #[tokio::test]
 async fn delete_module_also_deletes_secrets() -> Result<()> {
     let (pg_container, s3_container, app, s3_client) = setup_app().await?;
@@ -1874,6 +1959,18 @@ async fn get_definition_secrets_schema_returns_schema() -> Result<()> {
     Ok(())
 }
 
+/// Verifies that applying a JSON Patch to a definition's secrets stores the merged secrets and returns 204 No Content.
+///
+/// This test uploads a secrets JSON Schema to S3, applies a JSON Patch that adds a secret property, and asserts
+/// that the endpoint responds with HTTP 204 and that the resulting `secrets.json` in S3 contains the patched data.
+///
+/// # Examples
+///
+/// ```
+/// // Upload a secrets schema for `sec-def-patch-1`, PATCH `/definitions/sec-def-patch-1/secrets` with
+/// // `[{"op":"add","path":"/api_key","value":"sk-secret-123"}]`, expect 204 and verify stored `secrets.json`
+/// // equals `{"api_key":"sk-secret-123"}`.
+/// ```
 #[tokio::test]
 async fn patch_definition_secrets_applies_and_returns_no_content() -> Result<()> {
     let (_pg_container, _s3_container, app, s3_client) = setup_app().await?;
@@ -2042,6 +2139,42 @@ async fn patch_definition_secrets_rejects_invalid_result() -> Result<()> {
     Ok(())
 }
 
+/// Verifies that fetching a module's secrets schema returns the JSON schema stored in S3.
+///
+/// # Examples
+///
+/// ```
+/// # async fn run_example() -> anyhow::Result<()> {
+/// let (_pg_container, _s3_container, app, s3_client) = setup_app().await?;
+///
+/// let schema = serde_json::json!({
+///     "type": "object",
+///     "properties": { "connection_string": { "type": "string" } },
+///     "required": ["connection_string"]
+/// });
+///
+/// s3_client.put_object()
+///     .bucket("module-secrets")
+///     .key("sec-mod-schema-1/secrets.schema.json")
+///     .body(aws_sdk_s3::types::ByteStream::from(serde_json::to_vec(&schema)?))
+///     .send()
+///     .await?;
+///
+/// let response = app.oneshot(
+///     axum::http::Request::builder()
+///         .uri("/modules/sec-mod-schema-1/secrets/schema")
+///         .body(axum::body::Body::empty())?
+/// ).await?;
+///
+/// assert_eq!(response.status(), axum::http::StatusCode::OK);
+/// let body = read_body(response).await?;
+/// let returned: serde_json::Value = serde_json::from_slice(&body)?;
+/// assert_eq!(returned, schema);
+///
+/// _pg_container.stop().await.ok();
+/// _s3_container.stop().await.ok();
+/// # Ok(()) }
+/// ```
 #[tokio::test]
 async fn get_module_secrets_schema_returns_schema() -> Result<()> {
     let (_pg_container, _s3_container, app, s3_client) = setup_app().await?;
@@ -2139,6 +2272,20 @@ async fn patch_module_secrets_applies_and_returns_no_content() -> Result<()> {
     Ok(())
 }
 
+/// Verifies that patching a module's secrets which produces an invalid document is rejected
+/// and that the original secrets remain unchanged in S3.
+///
+/// This test uploads a secrets schema and an initial secrets object, sends a JSON Patch
+/// that removes a required property, expects a 500 Internal Server Error, and asserts
+/// the stored secrets in S3 are unchanged.
+///
+/// # Examples
+///
+/// ```
+/// // The test uploads a schema requiring `connection_string`, stores secrets,
+/// // applies a `remove /connection_string` patch, and asserts the request fails
+/// // and the S3 object still contains the original `connection_string`.
+/// ```
 #[tokio::test]
 async fn patch_module_secrets_rejects_invalid_result() -> Result<()> {
     let (_pg_container, _s3_container, app, s3_client) = setup_app().await?;

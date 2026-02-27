@@ -140,6 +140,20 @@ pub async fn patch_configuration(
     Ok(patched)
 }
 
+/// Deletes all objects in the configuration bucket under the given configuration id prefix.
+///
+/// Sends a request to remove every S3 object with the key prefix "{id}/" from the bucket corresponding
+/// to `target`. Returns an error if the deletion operation fails.
+///
+/// # Examples
+///
+/// ```no_run
+/// # use crate::{delete_configuration, ConfigurationTarget};
+/// # async fn example(client: &aws_sdk_s3::Client) -> anyhow::Result<()> {
+/// delete_configuration(client, ConfigurationTarget::Definition, "my-config-id").await?;
+/// # Ok(())
+/// # }
+/// ```
 pub async fn delete_configuration(
     s3_client: &Client,
     target: ConfigurationTarget,
