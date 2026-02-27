@@ -118,7 +118,8 @@ pub async fn patch_secrets(
 }
 
 pub async fn delete_secrets(s3_client: &Client, target: SecretsTarget, id: &str) -> Result<()> {
-    s3_utils::delete_objects_with_prefix(s3_client, bucket_for(target), id)
+    let prefix = format!("{}/", id);
+    s3_utils::delete_objects_with_prefix(s3_client, bucket_for(target), &prefix)
         .await
         .context("Failed to delete secrets artifacts from S3")?;
 

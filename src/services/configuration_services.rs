@@ -145,7 +145,8 @@ pub async fn delete_configuration(
     target: ConfigurationTarget,
     id: &str,
 ) -> Result<()> {
-    s3_utils::delete_objects_with_prefix(s3_client, bucket_for(target), id)
+    let prefix = format!("{}/", id);
+    s3_utils::delete_objects_with_prefix(s3_client, bucket_for(target), &prefix)
         .await
         .context("Failed to delete configuration artifacts from S3")?;
 
