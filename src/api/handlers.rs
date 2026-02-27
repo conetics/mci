@@ -90,7 +90,7 @@ pub async fn get_definition(
 /// # Examples
 ///
 /// ```
-/// use http::StatusCode;
+/// use axum::http::StatusCode;
 ///
 /// // Handler returns NO_CONTENT on successful deletion.
 /// let status = StatusCode::NO_CONTENT;
@@ -489,7 +489,7 @@ pub async fn put_module_configuration(
 /// // Example JSON Patch that replaces /name
 /// let patch_value = json!([ { "op": "replace", "path": "/name", "value": "new-name" } ]);
 /// let operations: Patch = serde_json::from_value(patch_value).expect("valid patch");
-/// assert_eq!(operations.operations.len(), 1);
+/// assert_eq!(operations.0.len(), 1);
 /// ```
 pub async fn patch_module_configuration(
     State(state): State<AppState>,
@@ -519,7 +519,7 @@ pub async fn patch_module_configuration(
 /// ```no_run
 /// use axum::extract::{State, Path};
 /// use serde_json::json;
-/// use crate::api::handlers::get_definition_secrets_schema;
+/// use mci::api::handlers::get_definition_secrets_schema;
 /// // Assume `state` is an initialized AppState and `id` is the definition id.
 /// // let response = get_definition_secrets_schema(State(state), Path(id.to_string())).await;
 /// ```
@@ -615,7 +615,7 @@ pub async fn get_module_secrets_schema(
 /// // Example JSON Patch that replaces "/foo" with "bar"
 /// let patch_value = json!([ { "op": "replace", "path": "/foo", "value": "bar" } ]);
 /// let operations: Patch = serde_json::from_value(patch_value).unwrap();
-/// assert_eq!(operations.operations.len(), 1);
+/// assert_eq!(operations.0.len(), 1);
 /// ```
 pub async fn patch_module_secrets(
     State(state): State<AppState>,

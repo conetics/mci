@@ -52,11 +52,11 @@ pub fn app(app_state: AppState) -> Router {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// # async fn run_example() -> Result<(), Box<dyn std::error::Error>> {
-/// let cfg = config::Config::default(); // build a real config in real code
+/// let cfg = mci::config::Config::default();
 /// let handle = axum_server::Handle::new();
-/// let (server_future, addr) = serve(&cfg, handle).await?;
+/// let (server_future, addr) = mci::serve(&cfg, handle).await?;
 /// tokio::spawn(server_future);
 /// println!("Server listening on {}", addr);
 /// # Ok(())

@@ -156,7 +156,7 @@ pub async fn patch_configuration(
 /// # Examples
 ///
 /// ```no_run
-/// # use crate::{delete_configuration, ConfigurationTarget};
+/// # use mci::services::configuration_services::{delete_configuration, ConfigurationTarget};
 /// # async fn example(client: &aws_sdk_s3::Client) -> anyhow::Result<()> {
 /// delete_configuration(client, ConfigurationTarget::Definition, "my-config-id").await?;
 /// # Ok(())

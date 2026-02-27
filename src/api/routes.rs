@@ -12,10 +12,9 @@ use axum::{
 ///
 /// # Examples
 ///
-/// ```
+/// ```no_run
 /// use axum::Router;
-/// // `routes` returns a Router<AppState> configured with the service endpoints.
-/// let router: Router<_> = crate::routes();
+/// let router: Router<_> = mci::api::routes::routes();
 /// ```
 pub fn routes() -> Router<AppState> {
     Router::new()
