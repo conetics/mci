@@ -30,7 +30,9 @@ COPY --from=builder /app/target/release/mci .
 
 COPY migrations ./migrations
 COPY diesel.toml ./diesel.toml
-# COPY certs ./certs
+
+RUN chmod +x scripts/generate_certs.sh && ./scripts/generate_certs.sh
+COPY certs ./certs
 
 EXPOSE 7687
 
