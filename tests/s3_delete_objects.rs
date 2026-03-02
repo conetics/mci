@@ -1,13 +1,14 @@
+mod common;
+
 use anyhow::Result;
 use aws_smithy_types::byte_stream::ByteStream;
-use mci::utils::s3_utils;
+use mci::utils;
 use uuid::Uuid;
-
-mod common;
+use common::initialize_s3;
 
 #[tokio::test]
 async fn delete_objects_with_prefix_removes_objects() -> Result<()> {
-    let (container, client) = common::initialize_s3().await?;
+    let (container, client) = initialize_s3().await?;
     let bucket = format!("test-bucket-{}", Uuid::new_v4());
     client.create_bucket().bucket(&bucket).send().await?;
 
@@ -35,7 +36,7 @@ async fn delete_objects_with_prefix_removes_objects() -> Result<()> {
         .await?;
     assert_eq!(listed.key_count(), Some(keys.len() as i32));
 
-    s3_utils::delete_objects_with_prefix(&client, &bucket, prefix).await?;
+    utils::s3::delete_objects_with_prefix(&client, &bucket, prefix).await?;
 
     let listed = client
         .list_objects_v2()
@@ -51,11 +52,11 @@ async fn delete_objects_with_prefix_removes_objects() -> Result<()> {
 
 #[tokio::test]
 async fn delete_objects_with_prefix_empty_prefix_ok() -> Result<()> {
-    let (container, client) = common::initialize_s3().await?;
+    let (container, client) = initialize_s3().await?;
     let bucket = format!("test-bucket-{}", Uuid::new_v4());
     client.create_bucket().bucket(&bucket).send().await?;
 
-    s3_utils::delete_objects_with_prefix(&client, &bucket, "empty-prefix/").await?;
+    utils::s3::delete_objects_with_prefix(&client, &bucket, "empty-prefix/").await?;
 
     container.stop().await.ok();
     Ok(())

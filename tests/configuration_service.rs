@@ -1,9 +1,10 @@
+mod common;
+
 use anyhow::Result;
 use aws_smithy_types::byte_stream::ByteStream;
-use mci::services::configuration_services::{self, ConfigurationTarget};
+use mci::services::configuration::{self, ConfigurationTarget};
 use serde_json::json;
-
-mod common;
+use common::initialize_s3;
 
 async fn create_configuration_buckets(client: &aws_sdk_s3::Client) -> Result<()> {
     client
@@ -22,7 +23,7 @@ async fn create_configuration_buckets(client: &aws_sdk_s3::Client) -> Result<()>
 
 #[tokio::test]
 async fn get_schema_and_configuration_reads_from_target_bucket() -> Result<()> {
-    let (container, client) = common::initialize_s3().await?;
+    let (container, client) = initialize_s3().await?;
     create_configuration_buckets(&client).await?;
 
     let id = "definition-a";
@@ -53,9 +54,9 @@ async fn get_schema_and_configuration_reads_from_target_bucket() -> Result<()> {
         .await?;
 
     let loaded_schema =
-        configuration_services::get_schema(&client, ConfigurationTarget::Definition, id).await?;
+        configuration::get_schema(&client, ConfigurationTarget::Definition, id).await?;
     let loaded_config =
-        configuration_services::get_configuration(&client, ConfigurationTarget::Definition, id)
+        configuration::get_configuration(&client, ConfigurationTarget::Definition, id)
             .await?;
 
     assert_eq!(loaded_schema, schema);
@@ -67,7 +68,7 @@ async fn get_schema_and_configuration_reads_from_target_bucket() -> Result<()> {
 
 #[tokio::test]
 async fn put_configuration_validates_and_persists() -> Result<()> {
-    let (container, client) = common::initialize_s3().await?;
+    let (container, client) = initialize_s3().await?;
     create_configuration_buckets(&client).await?;
 
     let id = "module-a";
@@ -94,11 +95,11 @@ async fn put_configuration_validates_and_persists() -> Result<()> {
         "enabled": true
     });
 
-    configuration_services::put_configuration(&client, ConfigurationTarget::Module, id, &config)
+    configuration::put_configuration(&client, ConfigurationTarget::Module, id, &config)
         .await?;
 
     let loaded =
-        configuration_services::get_configuration(&client, ConfigurationTarget::Module, id).await?;
+        configuration::get_configuration(&client, ConfigurationTarget::Module, id).await?;
     assert_eq!(loaded, config);
 
     container.stop().await.ok();
@@ -107,7 +108,7 @@ async fn put_configuration_validates_and_persists() -> Result<()> {
 
 #[tokio::test]
 async fn put_configuration_rejects_invalid_input() -> Result<()> {
-    let (container, client) = common::initialize_s3().await?;
+    let (container, client) = initialize_s3().await?;
     create_configuration_buckets(&client).await?;
 
     let id = "module-b";
@@ -134,7 +135,7 @@ async fn put_configuration_rejects_invalid_input() -> Result<()> {
         "enabled": "yes"
     });
 
-    let result = configuration_services::put_configuration(
+    let result = configuration::put_configuration(
         &client,
         ConfigurationTarget::Module,
         id,
@@ -145,7 +146,7 @@ async fn put_configuration_rejects_invalid_input() -> Result<()> {
     assert!(result.is_err());
 
     let loaded =
-        configuration_services::get_configuration(&client, ConfigurationTarget::Module, id).await;
+        configuration::get_configuration(&client, ConfigurationTarget::Module, id).await;
     assert!(loaded.is_err(), "invalid config should not be stored");
 
     container.stop().await.ok();
@@ -154,7 +155,7 @@ async fn put_configuration_rejects_invalid_input() -> Result<()> {
 
 #[tokio::test]
 async fn delete_configuration_cleans_entire_prefix() -> Result<()> {
-    let (container, client) = common::initialize_s3().await?;
+    let (container, client) = initialize_s3().await?;
     create_configuration_buckets(&client).await?;
 
     let id = "definition-to-clean";
@@ -182,7 +183,7 @@ async fn delete_configuration_cleans_entire_prefix() -> Result<()> {
         .send()
         .await?;
 
-    configuration_services::delete_configuration(&client, ConfigurationTarget::Definition, id)
+    configuration::delete_configuration(&client, ConfigurationTarget::Definition, id)
         .await?;
 
     let deleted_prefix_listing = client

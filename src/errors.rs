@@ -1,52 +1,60 @@
-use axum::{
-    http::StatusCode,
-    response::{IntoResponse, Response},
-    Json,
-};
+use axum::{http, response, Json};
 use serde_json::json;
-use std::fmt;
+use std::{error, fmt};
+use thiserror::Error;
 use validator::ValidationErrors;
+
+#[derive(Debug, Error)]
+pub enum ServiceError {
+    #[error("{0}")]
+    InvalidChanges(String),
+
+    #[error("Failed to apply JSON patch: {source}")]
+    PatchFailed {
+        #[source]
+        source: anyhow::Error,
+    },
+}
 
 #[derive(Debug)]
 pub enum AppError {
-    NotFound(String),
-    Conflict(String),
+    // 4xx
     BadRequest(String),
+    Conflict(String),
+    InvalidSource(String),
+    NotFound(String),
+    UnsupportedScheme(String),
     Validation(ValidationErrors),
 
-    UnsupportedScheme(String),
-    InvalidSource(String),
-
+    // 5xx
+    Database(diesel::result::Error),
     Internal(anyhow::Error),
     Pool(diesel::r2d2::PoolError),
-    Database(diesel::result::Error),
     TaskJoin(tokio::task::JoinError),
 }
 
 impl fmt::Display for AppError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AppError::Conflict(msg) => write!(f, "Conflict: {}", msg),
-            AppError::NotFound(msg) => write!(f, "Not found: {}", msg),
             AppError::BadRequest(msg) => write!(f, "Bad request: {}", msg),
-            AppError::Validation(err) => write!(f, "Validation error: {}", err),
-
-            AppError::UnsupportedScheme(scheme) => write!(f, "Unsupported scheme: '{}'", scheme),
+            AppError::Conflict(msg) => write!(f, "Conflict: {}", msg),
             AppError::InvalidSource(msg) => write!(f, "Invalid source: {}", msg),
-
-            AppError::Internal(err) => write!(f, "Internal error: {}", err),
+            AppError::NotFound(msg) => write!(f, "Not found: {}", msg),
+            AppError::UnsupportedScheme(scheme) => write!(f, "Unsupported scheme: '{}'", scheme),
+            AppError::Validation(err) => write!(f, "Validation error: {}", err),
             AppError::Database(err) => write!(f, "Database error: {}", err),
-            AppError::TaskJoin(err) => write!(f, "Task join error: {}", err),
+            AppError::Internal(err) => write!(f, "Internal error: {}", err),
             AppError::Pool(err) => write!(f, "Connection pool error: {}", err),
+            AppError::TaskJoin(err) => write!(f, "Task join error: {}", err),
         }
     }
 }
 
-impl std::error::Error for AppError {}
+impl error::Error for AppError {}
 
-impl From<ValidationErrors> for AppError {
-    fn from(err: ValidationErrors) -> Self {
-        AppError::Validation(err)
+impl From<anyhow::Error> for AppError {
+    fn from(err: anyhow::Error) -> Self {
+        AppError::Internal(err)
     }
 }
 
@@ -71,45 +79,56 @@ impl From<tokio::task::JoinError> for AppError {
     }
 }
 
-impl From<anyhow::Error> for AppError {
-    fn from(err: anyhow::Error) -> Self {
-        AppError::Internal(err)
+impl From<ValidationErrors> for AppError {
+    fn from(err: ValidationErrors) -> Self {
+        AppError::Validation(err)
     }
 }
 
-impl IntoResponse for AppError {
-    fn into_response(self) -> Response {
+impl response::IntoResponse for AppError {
+    fn into_response(self) -> response::Response {
         let (status, error_type, message) = match &self {
-            AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, "bad_request", msg.clone()),
-            AppError::NotFound(msg) => (StatusCode::NOT_FOUND, "not_found", msg.clone()),
-            AppError::Conflict(msg) => (StatusCode::CONFLICT, "conflict", msg.clone()),
+            // 4xx
+            AppError::BadRequest(msg) => {
+                (http::StatusCode::BAD_REQUEST, "bad_request", msg.clone())
+            }
+            AppError::Conflict(msg) => (http::StatusCode::CONFLICT, "conflict", msg.clone()),
+            AppError::InvalidSource(msg) => {
+                (http::StatusCode::BAD_REQUEST, "invalid_source", msg.clone())
+            }
+            AppError::NotFound(msg) => (http::StatusCode::NOT_FOUND, "not_found", msg.clone()),
+            AppError::UnsupportedScheme(scheme) => (
+                http::StatusCode::BAD_REQUEST,
+                "unsupported_scheme",
+                format!("Unsupported scheme: '{}'", scheme),
+            ),
             AppError::Validation(errors) => (
-                StatusCode::BAD_REQUEST,
+                http::StatusCode::BAD_REQUEST,
                 "validation_error",
                 format_validation_errors(errors),
             ),
 
-            AppError::InvalidSource(msg) => {
-                (StatusCode::BAD_REQUEST, "invalid_source", msg.clone())
-            }
-            AppError::UnsupportedScheme(scheme) => (
-                StatusCode::BAD_REQUEST,
-                "unsupported_scheme",
-                format!("Unsupported scheme: '{}'", scheme),
-            ),
-
+            // 5xx
             AppError::Database(err) => {
                 tracing::error!("Database error: {:?}", err);
                 (
-                    StatusCode::INTERNAL_SERVER_ERROR,
+                    http::StatusCode::INTERNAL_SERVER_ERROR,
                     "database_error",
                     "A database error occurred".to_string(),
+                )
+            }
+            AppError::Internal(err) => {
+                tracing::error!("Internal error: {:?}", err);
+                (
+                    http::StatusCode::INTERNAL_SERVER_ERROR,
+                    "internal_error",
+                    "An internal error occurred".to_string(),
                 )
             }
             AppError::Pool(err) => {
                 tracing::error!("Connection pool error: {:?}", err);
                 (
-                    StatusCode::INTERNAL_SERVER_ERROR,
+                    http::StatusCode::INTERNAL_SERVER_ERROR,
                     "pool_error",
                     "Database connection error".to_string(),
                 )
@@ -117,17 +136,9 @@ impl IntoResponse for AppError {
             AppError::TaskJoin(err) => {
                 tracing::error!("Task join error: {:?}", err);
                 (
-                    StatusCode::INTERNAL_SERVER_ERROR,
+                    http::StatusCode::INTERNAL_SERVER_ERROR,
                     "task_error",
                     "Task execution failed".to_string(),
-                )
-            }
-            AppError::Internal(err) => {
-                tracing::error!("Internal error: {:?}", err);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "internal_error",
-                    "An internal error occurred".to_string(),
                 )
             }
         };
@@ -143,30 +154,9 @@ impl IntoResponse for AppError {
     }
 }
 
-fn format_validation_errors(errors: &ValidationErrors) -> String {
-    let mut messages = Vec::new();
-
-    for (field, field_errors) in errors.field_errors() {
-        for error in field_errors {
-            let message = error
-                .message
-                .as_ref()
-                .map(|m| m.to_string())
-                .unwrap_or_else(|| format!("Invalid value for field '{}'", field));
-            messages.push(message);
-        }
-    }
-
-    messages.join(", ")
-}
-
 impl AppError {
     pub fn bad_request(msg: impl Into<String>) -> Self {
         AppError::BadRequest(msg.into())
-    }
-
-    pub fn not_found(msg: impl Into<String>) -> Self {
-        AppError::NotFound(msg.into())
     }
 
     pub fn conflict(msg: impl Into<String>) -> Self {
@@ -181,16 +171,38 @@ impl AppError {
         AppError::InvalidSource(msg.into())
     }
 
+    pub fn not_found(msg: impl Into<String>) -> Self {
+        AppError::NotFound(msg.into())
+    }
+
     pub fn unsupported_scheme(scheme: impl Into<String>) -> Self {
         AppError::UnsupportedScheme(scheme.into())
     }
 
     pub fn from_service_error(err: anyhow::Error) -> Self {
-        match err.downcast::<crate::services::ServiceError>() {
+        match err.downcast::<ServiceError>() {
             Ok(service_err) => AppError::BadRequest(service_err.to_string()),
             Err(other) => AppError::Internal(other),
         }
     }
+}
+
+fn format_validation_errors(errors: &ValidationErrors) -> String {
+    let mut messages = Vec::new();
+
+    for (field, field_errors) in errors.field_errors() {
+        for error in field_errors {
+            let message = error
+                .message
+                .as_ref()
+                .map(|m| m.to_string())
+                .unwrap_or_else(|| format!("Invalid value for field '{}'", field));
+
+            messages.push(message);
+        }
+    }
+
+    messages.join(", ")
 }
 
 #[cfg(test)]

@@ -1,12 +1,12 @@
-use mci::{self, config::Config};
+use mci::{config, serve};
 use tracing::info;
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::{fmt, EnvFilter};
 
 #[tokio::main]
 async fn main() {
-    let config = Config::from_env().expect("Failed to load configuration from environment");
+    let config = config::Config::from_env().expect("Failed to load configuration from environment");
 
-    tracing_subscriber::fmt()
+    fmt()
         .with_target(false)
         .with_env_filter(EnvFilter::new(&config.log_level))
         .init();
@@ -24,7 +24,7 @@ async fn main() {
         shutdown_handle.graceful_shutdown(Some(std::time::Duration::from_secs(30)));
     });
 
-    let (server_future, addr) = mci::serve(&config, handle)
+    let (server_future, addr) = serve(&config, handle)
         .await
         .expect("Failed to start server");
 

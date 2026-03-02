@@ -1,9 +1,11 @@
+mod common;
+
 use anyhow::Result;
 use diesel::prelude::*;
 use mci::{
     models::{Definition, NewDefinition},
     schema::definitions::dsl::*,
-    services::definitions_services::{
+    services::definitions::{
         create_definition, create_definition_from_registry, list_definitions, update_definition,
         update_definition_from_source, DefinitionFilter, DefinitionPayload, SortBy, SortOrder,
     },
@@ -11,13 +13,12 @@ use mci::{
 use sha2::{Digest, Sha256};
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
-
-mod common;
+use common::{initialize_pg, initialize_s3};
 
 #[tokio::test]
 async fn create_definition_from_http_source() -> Result<()> {
-    let (pg_container, pool) = common::initialize_pg().await?;
-    let (s3_container, s3_client) = common::initialize_s3().await?;
+    let (pg_container, pool) = initialize_pg().await?;
+    let (s3_container, s3_client) = initialize_s3().await?;
 
     s3_client
         .create_bucket()
@@ -72,9 +73,11 @@ async fn create_definition_from_http_source() -> Result<()> {
                 source_url: Some(meta_url.clone()),
             };
 
-            tokio::runtime::Handle::current().block_on(async {
-                create_definition(&mut conn, &http_client, &s3_client, &payload).await
-            })
+            let result: Result<Definition> =
+                tokio::runtime::Handle::current().block_on(async {
+                    create_definition(&mut conn, &http_client, &s3_client, &payload).await
+                });
+            result
         }
     })
     .await??;
@@ -102,8 +105,8 @@ async fn create_definition_from_http_source() -> Result<()> {
 
 #[tokio::test]
 async fn create_definition_conflict_errors() -> Result<()> {
-    let (pg_container, pool) = common::initialize_pg().await?;
-    let (s3_container, s3_client) = common::initialize_s3().await?;
+    let (pg_container, pool) = initialize_pg().await?;
+    let (s3_container, s3_client) = initialize_s3().await?;
 
     s3_client
         .create_bucket()
@@ -162,11 +165,11 @@ async fn create_definition_conflict_errors() -> Result<()> {
                 digest: digest_for_task.clone(),
                 source_url: None,
             };
-            tokio::runtime::Handle::current()
-                .block_on(async {
+            let result: Result<Definition> =
+                tokio::runtime::Handle::current().block_on(async {
                     create_definition(&mut conn, &http_client, &s3_client, &payload).await
-                })
-                .map(|_| ())
+                });
+            result.map(|_| ())
         }
     })
     .await??;
@@ -192,9 +195,11 @@ async fn create_definition_conflict_errors() -> Result<()> {
                 digest: digest_for_task,
                 source_url: Some(meta_url),
             };
-            tokio::runtime::Handle::current().block_on(async {
-                create_definition(&mut conn, &http_client, &s3_client, &payload).await
-            })?;
+            let result: Result<Definition> =
+                tokio::runtime::Handle::current().block_on(async {
+                    create_definition(&mut conn, &http_client, &s3_client, &payload).await
+                });
+            result?;
             Ok(())
         }
     })
@@ -216,8 +221,8 @@ async fn create_definition_conflict_errors() -> Result<()> {
 
 #[tokio::test]
 async fn create_definition_from_registry_sets_source_url() -> Result<()> {
-    let (pg_container, pool) = common::initialize_pg().await?;
-    let (s3_container, s3_client) = common::initialize_s3().await?;
+    let (pg_container, pool) = initialize_pg().await?;
+    let (s3_container, s3_client) = initialize_s3().await?;
 
     s3_client
         .create_bucket()
@@ -262,10 +267,17 @@ async fn create_definition_from_registry_sets_source_url() -> Result<()> {
 
         move || -> Result<Definition> {
             let mut conn = pool.get()?;
-            tokio::runtime::Handle::current().block_on(async {
-                create_definition_from_registry(&mut conn, &http_client, &s3_client, &registry_url)
+            let result: Result<Definition> =
+                tokio::runtime::Handle::current().block_on(async {
+                    create_definition_from_registry(
+                        &mut conn,
+                        &http_client,
+                        &s3_client,
+                        &registry_url,
+                    )
                     .await
-            })
+                });
+            result
         }
     })
     .await??;
@@ -292,8 +304,8 @@ async fn create_definition_from_registry_sets_source_url() -> Result<()> {
 
 #[tokio::test]
 async fn update_definition_from_source_updates_when_digest_changes() -> Result<()> {
-    let (pg_container, pool) = common::initialize_pg().await?;
-    let (s3_container, s3_client) = common::initialize_s3().await?;
+    let (pg_container, pool) = initialize_pg().await?;
+    let (s3_container, s3_client) = initialize_s3().await?;
 
     s3_client
         .create_bucket()
@@ -361,9 +373,12 @@ async fn update_definition_from_source_updates_when_digest_changes() -> Result<(
 
         move || -> Result<Definition> {
             let mut conn = pool.get()?;
-            tokio::runtime::Handle::current().block_on(async {
-                update_definition_from_source(&mut conn, &http_client, &s3_client, "def-4").await
-            })
+            let result: Result<Definition> =
+                tokio::runtime::Handle::current().block_on(async {
+                    update_definition_from_source(&mut conn, &http_client, &s3_client, "def-4")
+                        .await
+                });
+            result
         }
     })
     .await??;
@@ -395,7 +410,7 @@ async fn update_definition_from_source_updates_when_digest_changes() -> Result<(
 async fn update_definition_via_request_strips_digest() -> Result<()> {
     use mci::models::UpdateDefinitionRequest;
 
-    let (pg_container, pool) = common::initialize_pg().await?;
+    let (pg_container, pool) = initialize_pg().await?;
 
     let old_digest = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
 
@@ -461,7 +476,7 @@ async fn update_definition_via_request_strips_digest() -> Result<()> {
 
 #[tokio::test]
 async fn list_definitions_filters_and_sorting() -> Result<()> {
-    let (pg_container, pool) = common::initialize_pg().await?;
+    let (pg_container, pool) = initialize_pg().await?;
 
     tokio::task::spawn_blocking({
         let pool = pool.clone();
