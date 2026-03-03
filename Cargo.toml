@@ -30,7 +30,7 @@ config = "0.15"
 futures = "0.3"
 validator = { version = "0.20", features = ["derive"] }
 regex = "1.12"
-reqwest = { version = "0.12", features = ["json", "stream"] }
+reqwest = { version = "0.13", features = ["json", "stream"] }
 http-body-util = "0.1"
 hyper = { version = "1.0", features = ["client"] }
 url = "2.5"
