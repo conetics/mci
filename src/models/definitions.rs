@@ -1,34 +1,9 @@
+use super::common::validate_digest;
 use crate::schema;
-use crate::utils;
+use crate::utils::regex;
 use diesel::{AsChangeset, Insertable, Queryable, Selectable};
 use serde::{Deserialize, Serialize};
-use std::borrow;
-use validator::{Validate, ValidationError};
-
-fn validate_digest(digest: &str) -> Result<(), ValidationError> {
-    let (algorithm, hash) = digest.split_once(':').ok_or_else(|| {
-        let mut error = ValidationError::new("invalid_digest_format");
-        error.add_param(borrow::Cow::from("value"), &digest);
-        error
-    })?;
-    let hash_regex = match algorithm {
-        "sha256" => &utils::regex::SHA256,
-        _ => {
-            let mut error = ValidationError::new("unsupported_digest_algorithm");
-            error.add_param(borrow::Cow::from("value"), &digest);
-            error.add_param(borrow::Cow::from("algorithm"), &algorithm);
-            return Err(error);
-        }
-    };
-    if hash_regex.is_match(hash) {
-        Ok(())
-    } else {
-        let mut error = ValidationError::new("invalid_hash_format");
-        error.add_param(borrow::Cow::from("value"), &digest);
-        error.add_param(borrow::Cow::from("algorithm"), &algorithm);
-        Err(error)
-    }
-}
+use validator::Validate;
 
 #[derive(Queryable, Selectable, Serialize, Deserialize)]
 #[diesel(table_name = schema::definitions)]
@@ -46,9 +21,9 @@ pub struct Definition {
 #[derive(Insertable, Deserialize, Validate)]
 #[diesel(table_name = schema::definitions)]
 pub struct NewDefinition {
-    #[validate(length(min = 3, max = 64), regex(path = *utils::regex::NAMESPACE_ID))]
+    #[validate(length(min = 3, max = 64), regex(path = *regex::NAMESPACE_ID))]
     pub id: String,
-    #[validate(length(min = 3, max = 64), regex(path = *utils::regex::TYPE_IDENTIFIER))]
+    #[validate(length(min = 3, max = 64), regex(path = *regex::TYPE_IDENTIFIER))]
     pub type_: String,
     #[validate(length(min = 3, max = 64))]
     pub name: String,
@@ -64,7 +39,7 @@ pub struct NewDefinition {
 #[diesel(table_name = schema::definitions)]
 pub struct UpdateDefinition {
     pub is_enabled: Option<bool>,
-    #[validate(length(min = 3, max = 64), regex(path = *utils::regex::TYPE_IDENTIFIER))]
+    #[validate(length(min = 3, max = 64), regex(path = *regex::TYPE_IDENTIFIER))]
     pub type_: Option<String>,
     #[validate(length(min = 3, max = 64))]
     pub name: Option<String>,
@@ -80,7 +55,7 @@ pub struct UpdateDefinition {
 #[serde(deny_unknown_fields)]
 pub struct UpdateDefinitionRequest {
     pub is_enabled: Option<bool>,
-    #[validate(length(min = 3, max = 64), regex(path = *utils::regex::TYPE_IDENTIFIER))]
+    #[validate(length(min = 3, max = 64), regex(path = *regex::TYPE_IDENTIFIER))]
     pub type_: Option<String>,
     #[validate(length(min = 3, max = 64))]
     pub name: Option<String>,

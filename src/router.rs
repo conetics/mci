@@ -4,7 +4,7 @@ use tower_http::{compression, cors, propagate_header, sensitive_headers, trace};
 
 pub fn create_router(state: state::AppState) -> Router {
     Router::new()
-        .merge(Router::new().nest("/v1", Router::new().merge(routes::all_routes())))
+        .merge(routes::all_routes())
         .layer(
             trace::TraceLayer::new_for_http()
                 .make_span_with(trace::DefaultMakeSpan::new().include_headers(true))

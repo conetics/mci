@@ -1,13 +1,13 @@
+use super::common::validate_digest;
 use crate::schema;
-use crate::utils;
+use crate::utils::regex;
 use diesel::deserialize;
 use diesel::pg;
 use diesel::serialize;
 use diesel::{AsChangeset, AsExpression, FromSqlRow, Insertable, Queryable, Selectable};
 use serde::{Deserialize, Serialize};
-use std::borrow;
 use std::io::Write;
-use validator::{Validate, ValidationError};
+use validator::Validate;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, AsExpression, FromSqlRow)]
 #[diesel(sql_type = schema::sql_types::ModuleType)]
@@ -47,31 +47,6 @@ impl deserialize::FromSql<schema::sql_types::ModuleType, pg::Pg> for ModuleType 
     }
 }
 
-fn validate_digest(digest: &str) -> Result<(), ValidationError> {
-    let (algorithm, hash) = digest.split_once(':').ok_or_else(|| {
-        let mut error = ValidationError::new("invalid_digest_format");
-        error.add_param(borrow::Cow::from("value"), &digest);
-        error
-    })?;
-    let hash_regex = match algorithm {
-        "sha256" => &utils::regex::SHA256,
-        _ => {
-            let mut error = ValidationError::new("unsupported_digest_algorithm");
-            error.add_param(borrow::Cow::from("value"), &digest);
-            error.add_param(borrow::Cow::from("algorithm"), &algorithm);
-            return Err(error);
-        }
-    };
-    if hash_regex.is_match(hash) {
-        Ok(())
-    } else {
-        let mut error = ValidationError::new("invalid_hash_format");
-        error.add_param(borrow::Cow::from("value"), &digest);
-        error.add_param(borrow::Cow::from("algorithm"), &algorithm);
-        Err(error)
-    }
-}
-
 #[derive(Queryable, Selectable, Serialize, Deserialize)]
 #[diesel(table_name = schema::modules)]
 #[diesel(check_for_backend(pg::Pg))]
@@ -88,7 +63,7 @@ pub struct Module {
 #[derive(Insertable, Deserialize, Validate)]
 #[diesel(table_name = schema::modules)]
 pub struct NewModule {
-    #[validate(length(min = 3, max = 64), regex(path = *utils::regex::NAMESPACE_ID))]
+    #[validate(length(min = 3, max = 64), regex(path = *regex::NAMESPACE_ID))]
     pub id: String,
     pub type_: ModuleType,
     #[validate(length(min = 3, max = 64))]

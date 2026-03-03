@@ -1,3 +1,4 @@
+use crate::services::ResourceKind;
 use crate::{errors, models, services, AppState};
 use axum::{extract, http, routing, Json, Router};
 use serde_json::Value as JsonValue;
@@ -8,7 +9,7 @@ pub async fn get_definition_secrets_schema(
 ) -> Result<Json<models::secrets::SecretsSchema>, errors::AppError> {
     let schema = services::secrets::get_schema(
         &state.s3_client,
-        services::secrets::SecretsTarget::Definition,
+        ResourceKind::Definition,
         &id,
     )
     .await?;
@@ -24,7 +25,7 @@ pub async fn patch_definition_secrets(
         serde_json::from_value(body).map_err(|e| errors::AppError::bad_request(e.to_string()))?;
     services::secrets::patch_secrets(
         &state.s3_client,
-        services::secrets::SecretsTarget::Definition,
+        ResourceKind::Definition,
         &id,
         &operations,
         state.config.s3_kms_key_id.as_deref(),
@@ -40,7 +41,7 @@ pub async fn get_module_secrets_schema(
 ) -> Result<Json<models::secrets::SecretsSchema>, errors::AppError> {
     let schema = services::secrets::get_schema(
         &state.s3_client,
-        services::secrets::SecretsTarget::Module,
+        ResourceKind::Module,
         &id,
     )
     .await?;
@@ -56,7 +57,7 @@ pub async fn patch_module_secrets(
         serde_json::from_value(body).map_err(|e| errors::AppError::bad_request(e.to_string()))?;
     services::secrets::patch_secrets(
         &state.s3_client,
-        services::secrets::SecretsTarget::Module,
+        ResourceKind::Module,
         &id,
         &operations,
         state.config.s3_kms_key_id.as_deref(),
@@ -66,7 +67,7 @@ pub async fn patch_module_secrets(
     Ok(http::StatusCode::NO_CONTENT)
 }
 
-pub fn create_route() -> Router<AppState> {
+pub fn create_route_v1() -> Router<AppState> {
     Router::new()
         .route(
             "/definitions/:id/secrets/schema",
@@ -81,8 +82,4 @@ pub fn create_route() -> Router<AppState> {
             routing::get(get_module_secrets_schema),
         )
         .route("/modules/:id/secrets", routing::patch(patch_module_secrets))
-}
-
-pub fn create_route_v1() -> Router<AppState> {
-    create_route()
 }

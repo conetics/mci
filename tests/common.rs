@@ -10,10 +10,10 @@ use testcontainers_modules::{
     testcontainers::{runners::AsyncRunner, ContainerAsync},
 };
 
-#![allow(dead_code)]
+#[allow(dead_code)]
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
-#![allow(dead_code)]
+#[allow(dead_code)]
 pub async fn initialize_s3() -> Result<(ContainerAsync<minio::MinIO>, aws_sdk_s3::Client)> {
     let container = minio::MinIO::default().start().await?;
 
@@ -26,7 +26,7 @@ pub async fn initialize_s3() -> Result<(ContainerAsync<minio::MinIO>, aws_sdk_s3
     Ok((container, client))
 }
 
-#![allow(dead_code)]
+#[allow(dead_code)]
 pub async fn initialize_pg() -> Result<(ContainerAsync<postgres::Postgres>, database::PgPool)> {
     let container = postgres::Postgres::default().start().await?;
 
@@ -48,7 +48,7 @@ pub async fn initialize_pg() -> Result<(ContainerAsync<postgres::Postgres>, data
     Ok((container, pool))
 }
 
-#![allow(dead_code)]
+#[allow(dead_code)]
 pub async fn setup_app() -> Result<(
     ContainerAsync<postgres::Postgres>,
     ContainerAsync<minio::MinIO>,
@@ -94,7 +94,7 @@ pub async fn setup_app() -> Result<(
     Ok((pg_container, s3_container, router, s3_client))
 }
 
-#![allow(dead_code)]
+#[allow(dead_code)]
 pub async fn read_body(response: Response) -> Result<Bytes> {
     let collected = response.into_body().collect().await?;
     Ok(collected.to_bytes())

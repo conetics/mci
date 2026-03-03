@@ -1,6 +1,7 @@
 use axum::{extract, http, routing, Json, Router};
 use serde_json::Value as JsonValue;
 use crate::{errors, models, services, AppState};
+use crate::services::ResourceKind;
 
 pub async fn get_definition_configuration_schema(
     extract::State(state): extract::State<AppState>,
@@ -8,7 +9,7 @@ pub async fn get_definition_configuration_schema(
 ) -> Result<Json<models::configuration::ConfigurationSchema>, errors::AppError> {
     let schema = services::configuration::get_schema(
         &state.s3_client,
-        services::configuration::ConfigurationTarget::Definition,
+        ResourceKind::Definition,
         &id,
     )
     .await?;
@@ -21,13 +22,13 @@ pub async fn get_definition_configuration(
 ) -> Result<Json<models::configuration::ConfigurationDocument>, errors::AppError> {
     let config = services::configuration::get_configuration(
         &state.s3_client,
-        services::configuration::ConfigurationTarget::Definition,
+        ResourceKind::Definition,
         &id,
     )
     .await?;
     let schema = services::configuration::get_schema(
         &state.s3_client,
-        services::configuration::ConfigurationTarget::Definition,
+        ResourceKind::Definition,
         &id,
     )
     .await?;
@@ -42,7 +43,7 @@ pub async fn put_definition_configuration(
 ) -> Result<http::StatusCode, errors::AppError> {
     services::configuration::put_configuration(
         &state.s3_client,
-        services::configuration::ConfigurationTarget::Definition,
+        ResourceKind::Definition,
         &id,
         &body,
     )
@@ -60,7 +61,7 @@ pub async fn patch_definition_configuration(
         serde_json::from_value(body).map_err(|e| errors::AppError::bad_request(e.to_string()))?;
     let patched = services::configuration::patch_configuration(
         &state.s3_client,
-        services::configuration::ConfigurationTarget::Definition,
+        ResourceKind::Definition,
         &id,
         &operations,
     )
@@ -75,7 +76,7 @@ pub async fn get_module_configuration_schema(
 ) -> Result<Json<models::configuration::ConfigurationSchema>, errors::AppError> {
     let schema = services::configuration::get_schema(
         &state.s3_client,
-        services::configuration::ConfigurationTarget::Module,
+        ResourceKind::Module,
         &id,
     )
     .await?;
@@ -88,13 +89,13 @@ pub async fn get_module_configuration(
 ) -> Result<Json<models::configuration::ConfigurationDocument>, errors::AppError> {
     let config = services::configuration::get_configuration(
         &state.s3_client,
-        services::configuration::ConfigurationTarget::Module,
+        ResourceKind::Module,
         &id,
     )
     .await?;
     let schema = services::configuration::get_schema(
         &state.s3_client,
-        services::configuration::ConfigurationTarget::Module,
+        ResourceKind::Module,
         &id,
     )
     .await?;
@@ -109,7 +110,7 @@ pub async fn put_module_configuration(
 ) -> Result<http::StatusCode, errors::AppError> {
     services::configuration::put_configuration(
         &state.s3_client,
-        services::configuration::ConfigurationTarget::Module,
+        ResourceKind::Module,
         &id,
         &body,
     )
@@ -127,7 +128,7 @@ pub async fn patch_module_configuration(
         serde_json::from_value(body).map_err(|e| errors::AppError::bad_request(e.to_string()))?;
     let patched = services::configuration::patch_configuration(
         &state.s3_client,
-        services::configuration::ConfigurationTarget::Module,
+        ResourceKind::Module,
         &id,
         &operations,
     )
@@ -136,7 +137,7 @@ pub async fn patch_module_configuration(
     Ok(Json(patched))
 }
 
-pub fn create_route() -> Router<AppState> {
+pub fn create_route_v1() -> Router<AppState> {
     Router::new()
         .route(
             "/definitions/:id/configuration/schema",
@@ -164,8 +165,4 @@ pub fn create_route() -> Router<AppState> {
             "/modules/:id/configuration",
             routing::patch(patch_module_configuration),
         )
-}
-
-pub fn create_route_v1() -> Router<AppState> {
-    create_route()
 }

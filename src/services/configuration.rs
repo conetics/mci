@@ -1,35 +1,20 @@
+use crate::services::common::{validate_schema, ResourceKind};
 use anyhow::{Context, Result};
 use aws_sdk_s3::{primitives, Client};
 use serde_json::Value as JsonValue;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConfigurationTarget {
-    Definition,
-    Module,
-}
-
-fn bucket_for(target: ConfigurationTarget) -> &'static str {
-    match target {
-        ConfigurationTarget::Definition => "definition-configurations",
-        ConfigurationTarget::Module => "module-configurations",
-    }
-}
-
 pub fn validate_configuration(schema: &JsonValue, configuration: &JsonValue) -> Result<JsonValue> {
-    let validator = jsonschema::validator_for(schema).context("Invalid JSON schema")?;
-    let evaluation = validator.evaluate(configuration);
-
-    serde_json::to_value(evaluation.list()).context("Failed to serialize validation output")
+    validate_schema(schema, configuration)
 }
 
 pub async fn get_schema(
     s3_client: &Client,
-    target: ConfigurationTarget,
+    target: ResourceKind,
     id: &str,
 ) -> Result<JsonValue> {
     let response = s3_client
         .get_object()
-        .bucket(bucket_for(target))
+        .bucket(target.config_bucket())
         .key(format!("{}/configuration.schema.json", id))
         .send()
         .await
@@ -46,12 +31,12 @@ pub async fn get_schema(
 
 pub async fn get_configuration(
     s3_client: &Client,
-    target: ConfigurationTarget,
+    target: ResourceKind,
     id: &str,
 ) -> Result<JsonValue> {
     let response = s3_client
         .get_object()
-        .bucket(bucket_for(target))
+        .bucket(target.config_bucket())
         .key(format!("{}/configuration.json", id))
         .send()
         .await
@@ -68,7 +53,7 @@ pub async fn get_configuration(
 
 pub async fn put_configuration(
     s3_client: &Client,
-    target: ConfigurationTarget,
+    target: ResourceKind,
     id: &str,
     configuration: &JsonValue,
 ) -> Result<()> {
@@ -91,7 +76,7 @@ pub async fn put_configuration(
 
     s3_client
         .put_object()
-        .bucket(bucket_for(target))
+        .bucket(target.config_bucket())
         .key(format!("{}/configuration.json", id))
         .body(primitives::ByteStream::from(body))
         .send()
@@ -103,7 +88,7 @@ pub async fn put_configuration(
 
 pub async fn patch_configuration(
     s3_client: &Client,
-    target: ConfigurationTarget,
+    target: ResourceKind,
     id: &str,
     operations: &json_patch::Patch,
 ) -> Result<JsonValue> {
@@ -132,7 +117,7 @@ pub async fn patch_configuration(
 
     s3_client
         .put_object()
-        .bucket(bucket_for(target))
+        .bucket(target.config_bucket())
         .key(format!("{}/configuration.json", id))
         .body(primitives::ByteStream::from(body))
         .send()
@@ -144,16 +129,12 @@ pub async fn patch_configuration(
 
 pub async fn delete_configuration(
     s3_client: &Client,
-    target: ConfigurationTarget,
+    target: ResourceKind,
     id: &str,
 ) -> Result<()> {
     let prefix = format!("{}/", id);
-    crate::utils::s3::delete_objects_with_prefix(s3_client, bucket_for(target), &prefix)
+    crate::utils::s3::delete_objects_with_prefix(s3_client, target.config_bucket(), &prefix)
         .await
         .context("Failed to delete configuration artifacts from S3")?;
     Ok(())
 }
-
-#[cfg(test)]
-#[path = "configuration_tests.rs"]
-mod tests;

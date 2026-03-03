@@ -1,15 +1,11 @@
 use mci::{config, serve};
 use tracing::info;
-use tracing_subscriber::{fmt, EnvFilter};
 
 #[tokio::main]
 async fn main() {
     let config = config::Config::from_env().expect("Failed to load configuration from environment");
 
-    fmt()
-        .with_target(false)
-        .with_env_filter(EnvFilter::new(&config.log_level))
-        .init();
+    mci::telemetry::init(&config.log_level);
 
     let handle = axum_server::Handle::new();
     let shutdown_handle = handle.clone();

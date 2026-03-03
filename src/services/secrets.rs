@@ -1,32 +1,17 @@
+use crate::services::common::{validate_schema, ResourceKind};
 use crate::{errors, utils};
 use anyhow::{Context, Result};
 use aws_sdk_s3::{error, operation, primitives, Client};
 use serde_json::Value as JsonValue;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SecretsTarget {
-    Definition,
-    Module,
-}
-
-fn bucket_for(target: SecretsTarget) -> &'static str {
-    match target {
-        SecretsTarget::Definition => "definition-secrets",
-        SecretsTarget::Module => "module-secrets",
-    }
-}
-
 pub fn validate_secrets(schema: &JsonValue, secrets: &JsonValue) -> Result<JsonValue> {
-    let validator = jsonschema::validator_for(schema).context("Invalid JSON schema")?;
-    let evaluation = validator.evaluate(secrets);
-
-    serde_json::to_value(evaluation.list()).context("Failed to serialize validation output")
+    validate_schema(schema, secrets)
 }
 
-pub async fn get_schema(s3_client: &Client, target: SecretsTarget, id: &str) -> Result<JsonValue> {
+pub async fn get_schema(s3_client: &Client, target: ResourceKind, id: &str) -> Result<JsonValue> {
     let response = s3_client
         .get_object()
-        .bucket(bucket_for(target))
+        .bucket(target.secrets_bucket())
         .key(format!("{}/secrets.schema.json", id))
         .send()
         .await
@@ -43,12 +28,12 @@ pub async fn get_schema(s3_client: &Client, target: SecretsTarget, id: &str) -> 
 
 async fn get_secrets(
     s3_client: &Client,
-    target: SecretsTarget,
+    target: ResourceKind,
     id: &str,
 ) -> Result<Option<JsonValue>> {
     let response = match s3_client
         .get_object()
-        .bucket(bucket_for(target))
+        .bucket(target.secrets_bucket())
         .key(format!("{}/secrets.json", id))
         .send()
         .await
@@ -78,7 +63,7 @@ async fn get_secrets(
 
 pub async fn patch_secrets(
     s3_client: &Client,
-    target: SecretsTarget,
+    target: ResourceKind,
     id: &str,
     operations: &json_patch::Patch,
     kms_key_id: Option<&str>,
@@ -105,7 +90,7 @@ pub async fn patch_secrets(
         .context("Failed to serialize patched secrets for upload")?;
     let mut req = s3_client
         .put_object()
-        .bucket(bucket_for(target))
+        .bucket(target.secrets_bucket())
         .key(format!("{}/secrets.json", id))
         .body(primitives::ByteStream::from(body));
 
@@ -122,14 +107,10 @@ pub async fn patch_secrets(
     Ok(())
 }
 
-pub async fn delete_secrets(s3_client: &Client, target: SecretsTarget, id: &str) -> Result<()> {
+pub async fn delete_secrets(s3_client: &Client, target: ResourceKind, id: &str) -> Result<()> {
     let prefix = format!("{}/", id);
-    utils::s3::delete_objects_with_prefix(s3_client, bucket_for(target), &prefix)
+    utils::s3::delete_objects_with_prefix(s3_client, target.secrets_bucket(), &prefix)
         .await
         .context("Failed to delete secrets artifacts from S3")?;
     Ok(())
 }
-
-#[cfg(test)]
-#[path = "secrets_tests.rs"]
-mod tests;

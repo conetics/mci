@@ -51,8 +51,6 @@ async fn get_definition_secrets_schema_returns_schema() -> Result<()> {
     Ok(())
 }
 
-/// Verifies that applying a JSON Patch to a definition's secrets stores the merged secrets and
-/// returns 204 No Content.
 #[tokio::test]
 async fn patch_definition_secrets_applies_and_returns_no_content() -> Result<()> {
     let (pg_container, s3_container, app, s3_client) = setup_app().await?;
@@ -222,7 +220,6 @@ async fn patch_definition_secrets_rejects_invalid_result() -> Result<()> {
     Ok(())
 }
 
-/// Verifies that deleting a definition also removes its secrets from S3.
 #[tokio::test]
 async fn delete_definition_also_deletes_secrets() -> Result<()> {
     let (pg_container, s3_container, app, s3_client) = setup_app().await?;
@@ -302,8 +299,6 @@ async fn delete_definition_also_deletes_secrets() -> Result<()> {
     s3_container.stop().await.ok();
     Ok(())
 }
-
-// --- Module secrets ---
 
 #[tokio::test]
 async fn get_module_secrets_schema_returns_schema() -> Result<()> {
@@ -404,8 +399,6 @@ async fn patch_module_secrets_applies_and_returns_no_content() -> Result<()> {
     Ok(())
 }
 
-/// Verifies that patching a module's secrets which produces an invalid document is rejected
-/// and that the original secrets remain unchanged in S3.
 #[tokio::test]
 async fn patch_module_secrets_rejects_invalid_result() -> Result<()> {
     let (pg_container, s3_container, app, s3_client) = setup_app().await?;
@@ -472,7 +465,6 @@ async fn patch_module_secrets_rejects_invalid_result() -> Result<()> {
     Ok(())
 }
 
-/// Verifies that deleting a module also removes its secrets from S3.
 #[tokio::test]
 async fn delete_module_also_deletes_secrets() -> Result<()> {
     let (pg_container, s3_container, app, s3_client) = setup_app().await?;

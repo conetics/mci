@@ -1,15 +1,8 @@
+use crate::routes::common::{handle_delete_cleanup, InstallRequest};
+use crate::services::ResourceKind;
 use crate::{errors, models, services, AppState};
-use anyhow::anyhow;
 use axum::{extract, http, routing, Json, Router};
-use serde::Deserialize;
-use tracing::warn;
 use validator::Validate;
-
-#[derive(Debug, Deserialize, Validate)]
-pub struct InstallModuleRequest {
-    #[validate(url)]
-    pub source: String,
-}
 
 pub async fn list_modules(
     extract::State(state): extract::State<AppState>,
@@ -37,7 +30,7 @@ pub async fn create_module(
 
 pub async fn install_module(
     extract::State(state): extract::State<AppState>,
-    Json(request): Json<InstallModuleRequest>,
+    Json(request): Json<InstallRequest>,
 ) -> Result<(http::StatusCode, Json<models::modules::Module>), errors::AppError> {
     request.validate()?;
     let db_pool = state.db_pool.clone();
@@ -95,43 +88,17 @@ pub async fn delete_module(
     }
     let config_result = services::configuration::delete_configuration(
         &s3_client,
-        services::configuration::ConfigurationTarget::Module,
+        ResourceKind::Module,
         &id,
     )
     .await;
     let secrets_result = services::secrets::delete_secrets(
         &s3_client,
-        services::secrets::SecretsTarget::Module,
+        ResourceKind::Module,
         &id,
     )
     .await;
-    match (config_result, secrets_result) {
-        (Ok(()), Ok(())) => Ok(http::StatusCode::NO_CONTENT),
-        (Err(e), Ok(())) => Err(anyhow!(
-            "Module '{}' was deleted but its configuration could not be removed from S3: {}. Orphaned configuration objects may remain in the '{}/' prefix.",
-            id, e, id
-        )
-        .into()),
-        (Ok(()), Err(e)) => Err(anyhow!(
-            "Module '{}' was deleted but its secrets could not be removed from S3: {}. Orphaned secrets objects may remain in the '{}/' prefix.",
-            id, e, id
-        )
-        .into()),
-        (Err(config_err), Err(secrets_err)) => {
-            warn!(
-                module_id = %id,
-                config_error = %config_err,
-                secrets_error = %secrets_err,
-                "Module '{}' was deleted but both configuration and secrets cleanup failed. Orphaned objects may remain in S3 under the '{}/' prefix.",
-                id, id
-            );
-            Err(anyhow!(
-                "Module '{}' was deleted but S3 cleanup failed for both configuration ({}) and secrets ({}). Orphaned objects may remain in the '{}/' prefix.",
-                id, config_err, secrets_err, id
-            )
-            .into())
-        }
-    }
+    handle_delete_cleanup(&id, "Module", config_result, secrets_result).await
 }
 
 pub async fn update_module(
@@ -149,7 +116,7 @@ pub async fn update_module(
     Ok(Json(module))
 }
 
-pub fn create_route() -> Router<AppState> {
+pub fn create_route_v1() -> Router<AppState> {
     Router::new()
         .route("/modules", routing::get(list_modules))
         .route("/modules", routing::post(create_module))
@@ -158,8 +125,4 @@ pub fn create_route() -> Router<AppState> {
         .route("/modules/:id", routing::patch(update_module))
         .route("/modules/:id", routing::delete(delete_module))
         .route("/modules/:id/update", routing::post(upgrade_module))
-}
-
-pub fn create_route_v1() -> Router<AppState> {
-    create_route()
 }

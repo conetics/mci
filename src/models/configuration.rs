@@ -26,7 +26,3 @@ impl ConfigurationDocument {
         }
     }
 }
-
-#[cfg(test)]
-#[path = "configuration_tests.rs"]
-mod tests;

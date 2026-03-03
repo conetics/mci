@@ -475,6 +475,65 @@ async fn update_definition_via_request_strips_digest() -> Result<()> {
 }
 
 #[tokio::test]
+async fn update_definition_from_source_fails_when_source_url_is_none() -> Result<()> {
+    let (pg_container, pool) = initialize_pg().await?;
+
+    tokio::task::spawn_blocking({
+        let pool = pool.clone();
+        move || -> Result<()> {
+            let mut conn = pool.get()?;
+            diesel::insert_into(definitions)
+                .values(&NewDefinition {
+                    id: "no-source-url".into(),
+                    type_: "test-type".into(),
+                    name: "No Source".into(),
+                    description: "Has no source_url".into(),
+                    digest: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".into(),
+                    source_url: None,
+                })
+                .execute(&mut conn)?;
+            Ok(())
+        }
+    })
+    .await??;
+
+    let http_client = reqwest::Client::new();
+    let dummy_s3 = aws_sdk_s3::Client::from_conf(aws_sdk_s3::Config::builder().build());
+
+    let result = tokio::task::spawn_blocking({
+        let pool = pool.clone();
+        move || -> Result<()> {
+            let mut conn = pool.get()?;
+            let r: Result<mci::models::Definition> =
+                tokio::runtime::Handle::current().block_on(async {
+                    update_definition_from_source(
+                        &mut conn,
+                        &http_client,
+                        &dummy_s3,
+                        "no-source-url",
+                    )
+                    .await
+                });
+            r.map(|_| ())
+        }
+    })
+    .await?;
+
+    assert!(result.is_err(), "expected error when source_url is None");
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("source_url"),
+        "error message should mention source_url"
+    );
+
+    pg_container.stop().await.ok();
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn list_definitions_filters_and_sorting() -> Result<()> {
     let (pg_container, pool) = initialize_pg().await?;
 

@@ -357,3 +357,150 @@ async fn install_and_upgrade_definition_from_http_registry() -> Result<()> {
 
     Ok(())
 }
+
+async fn create_test_definition(
+    app: &axum::Router,
+    id: &str,
+    name: &str,
+    def_type: &str,
+) -> Result<()> {
+    let dir = tempfile::TempDir::new()?;
+    let file_path = dir.path().join("def.bin");
+    let content = format!("content-{}", id);
+    std::fs::write(&file_path, content.as_bytes())?;
+    let digest = format!("sha256:{:x}", Sha256::digest(content.as_bytes()));
+
+    let payload = json!({
+        "id": id,
+        "name": name,
+        "type": def_type,
+        "description": format!("Description for {}", id),
+        "file_url": file_path.to_string_lossy(),
+        "digest": digest,
+    });
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/definitions")
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&payload)?))
+                .unwrap(),
+        )
+        .await?;
+
+    assert_eq!(resp.status(), StatusCode::CREATED, "setup POST failed for {}", id);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn list_definitions_filter_by_type() -> Result<()> {
+    let (pg_container, s3_container, app, _) = setup_app().await?;
+
+    create_test_definition(&app, "filter-type-a", "Alpha", "widget").await?;
+    create_test_definition(&app, "filter-type-b", "Beta", "widget").await?;
+    create_test_definition(&app, "filter-type-c", "Gamma", "gadget").await?;
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/definitions?type=widget")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await?;
+
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = read_body(resp).await?;
+    let results: Vec<Definition> = serde_json::from_slice(&body)?;
+
+    assert_eq!(results.len(), 2);
+    assert!(results.iter().all(|d| d.type_ == "widget"));
+
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn list_definitions_filter_by_query_string() -> Result<()> {
+    let (pg_container, s3_container, app, _) = setup_app().await?;
+
+    create_test_definition(&app, "qf-unique-xyz", "Unique Name", "typeA").await?;
+    create_test_definition(&app, "qf-other", "Other Name", "typeA").await?;
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/definitions?query=unique-xyz")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await?;
+
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = read_body(resp).await?;
+    let results: Vec<Definition> = serde_json::from_slice(&body)?;
+
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].id, "qf-unique-xyz");
+
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn create_definition_with_duplicate_id_is_rejected() -> Result<()> {
+    let (pg_container, s3_container, app, _) = setup_app().await?;
+
+    create_test_definition(&app, "dup-id", "First", "widget").await?;
+
+    let dir = tempfile::TempDir::new()?;
+    let file_path = dir.path().join("def.bin");
+    std::fs::write(&file_path, b"content")?;
+    let digest = format!("sha256:{:x}", Sha256::digest(b"content"));
+
+    let payload = json!({
+        "id": "dup-id",
+        "name": "Second",
+        "type": "widget",
+        "description": "Duplicate attempt",
+        "file_url": file_path.to_string_lossy(),
+        "digest": digest,
+    });
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/definitions")
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&payload)?))
+                .unwrap(),
+        )
+        .await?;
+
+    assert_ne!(
+        resp.status(),
+        StatusCode::CREATED,
+        "duplicate POST must not return 201"
+    );
+
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
+
+    Ok(())
+}

@@ -484,7 +484,12 @@ async fn list_modules_filters_and_sorting() -> Result<()> {
                 &mut conn,
                 &ModuleFilter {
                     query: Some("amm".into()),
-                    ..Default::default()
+                    is_enabled: None,
+                    r#type: None,
+                    limit: None,
+                    offset: None,
+                    sort_by: None,
+                    sort_order: None,
                 },
             )
             .map_err(Into::into)
@@ -502,8 +507,13 @@ async fn list_modules_filters_and_sorting() -> Result<()> {
             list_modules(
                 &mut conn,
                 &ModuleFilter {
+                    query: None,
                     is_enabled: Some(false),
-                    ..Default::default()
+                    r#type: None,
+                    limit: None,
+                    offset: None,
+                    sort_by: None,
+                    sort_order: None,
                 },
             )
             .map_err(Into::into)
@@ -521,10 +531,13 @@ async fn list_modules_filters_and_sorting() -> Result<()> {
             list_modules(
                 &mut conn,
                 &ModuleFilter {
+                    query: None,
+                    is_enabled: None,
                     r#type: Some(ModuleType::Proxy),
+                    limit: None,
+                    offset: None,
                     sort_by: Some(SortBy::Name),
                     sort_order: Some(SortOrder::Desc),
-                    ..Default::default()
                 },
             )
             .map_err(Into::into)

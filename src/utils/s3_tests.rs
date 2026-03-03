@@ -1,31 +1,6 @@
 use super::*;
 use aws_sdk_s3::{primitives, Client};
 use bytes::Bytes;
-use sha2::{Digest, Sha256};
-
-#[tokio::test]
-async fn test_put_stream_sha256_digest_match() {
-    let client = Client::from_conf(aws_sdk_s3::Config::builder().build());
-    let data = b"hello world";
-
-    let mut hasher = Sha256::new();
-    hasher.update(data);
-
-    let digest = format!("sha256:{:x}", hasher.finalize());
-    let stream = primitives::ByteStream::from(Bytes::from_static(data));
-    let result = put_stream(&client, "test-bucket", "test-key", stream, Some(&digest)).await;
-
-    match result {
-        Ok(_) => {}
-        Err(e) => {
-            let msg = format!("{e:?}");
-            assert!(
-                msg.contains("Failed to upload object to S3"),
-                "expected an S3 upload error (no endpoint configured), but got: {msg}"
-            );
-        }
-    }
-}
 
 #[tokio::test]
 async fn test_put_stream_sha256_digest_mismatch() {

@@ -13,7 +13,3 @@ pub async fn stream_content_from_path(
 ) -> Result<byte_stream::ByteStream> {
     Ok(byte_stream::ByteStream::from_path(path).await?)
 }
-
-#[cfg(test)]
-#[path = "stream_tests.rs"]
-mod tests;

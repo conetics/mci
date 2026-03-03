@@ -18,7 +18,6 @@ pub enum ServiceError {
 
 #[derive(Debug)]
 pub enum AppError {
-    // 4xx
     BadRequest(String),
     Conflict(String),
     InvalidSource(String),
@@ -26,7 +25,6 @@ pub enum AppError {
     UnsupportedScheme(String),
     Validation(ValidationErrors),
 
-    // 5xx
     Database(diesel::result::Error),
     Internal(anyhow::Error),
     Pool(diesel::r2d2::PoolError),
@@ -88,7 +86,6 @@ impl From<ValidationErrors> for AppError {
 impl response::IntoResponse for AppError {
     fn into_response(self) -> response::Response {
         let (status, error_type, message) = match &self {
-            // 4xx
             AppError::BadRequest(msg) => {
                 (http::StatusCode::BAD_REQUEST, "bad_request", msg.clone())
             }
@@ -108,7 +105,6 @@ impl response::IntoResponse for AppError {
                 format_validation_errors(errors),
             ),
 
-            // 5xx
             AppError::Database(err) => {
                 tracing::error!("Database error: {:?}", err);
                 (

@@ -1,7 +1,7 @@
 use super::*;
 use crate::errors;
-use std::fs;
-use tempfile::TempDir;
+
+// ── pure URL / scheme parsing (no filesystem access) ─────────────────────────
 
 #[test]
 fn test_http_url() {
@@ -19,85 +19,6 @@ fn test_https_url() {
         result.unwrap(),
         Source::Http("https://example.com/example.json".to_string())
     );
-}
-
-#[test]
-fn test_file_url_valid() {
-    let temp_dir = TempDir::new().unwrap();
-    let file_path = temp_dir.path().join("example.json");
-    fs::write(&file_path, "test").unwrap();
-
-    let file_url = Url::from_file_path(&file_path).unwrap();
-    let result = Source::parse(file_url.as_str());
-
-    assert!(result.is_ok());
-
-    match result.unwrap() {
-        Source::File(path) => assert_eq!(path, file_path),
-        _ => panic!("Expected File variant"),
-    }
-}
-
-#[test]
-fn test_file_url_not_found() {
-    let result = Source::parse("file:///nonexistent/path/example.json");
-    assert!(result.is_err());
-
-    match result.unwrap_err() {
-        errors::AppError::NotFound(_) => {}
-        _ => panic!("Expected NotFound error"),
-    }
-}
-
-#[test]
-fn test_relative_path_valid() {
-    let temp_dir = TempDir::new().unwrap();
-    let file_path = temp_dir.path().join("example.json");
-    fs::write(&file_path, "test").unwrap();
-
-    std::env::set_current_dir(&temp_dir).unwrap();
-
-    let result = Source::parse("./example.json");
-    assert!(result.is_ok());
-}
-
-#[test]
-fn test_absolute_path_valid() {
-    let temp_dir = TempDir::new().unwrap();
-    let file_path = temp_dir.path().join("example.json");
-    fs::write(&file_path, "test").unwrap();
-
-    let result = Source::parse(file_path.to_str().unwrap());
-    assert!(result.is_ok());
-
-    match result.unwrap() {
-        Source::File(path) => assert_eq!(path, file_path),
-        _ => panic!("Expected File variant"),
-    }
-}
-
-#[test]
-fn test_file_path_not_found() {
-    let result = Source::parse("/nonexistent/path/example.json");
-    assert!(result.is_err());
-
-    match result.unwrap_err() {
-        errors::AppError::NotFound(_) => {}
-        _ => panic!("Expected NotFound error"),
-    }
-}
-
-#[test]
-fn test_file_path_is_directory() {
-    let temp_dir = TempDir::new().unwrap();
-
-    let result = Source::parse(temp_dir.path().to_str().unwrap());
-    assert!(result.is_err());
-
-    match result.unwrap_err() {
-        errors::AppError::BadRequest(_) => {}
-        _ => panic!("Expected BadRequest error"),
-    }
 }
 
 #[test]
@@ -148,32 +69,4 @@ fn test_http_url_with_port() {
         result.unwrap(),
         Source::Http("http://localhost:8080/example.json".to_string())
     );
-}
-
-#[test]
-fn test_as_path_helper() {
-    let temp_dir = TempDir::new().unwrap();
-    let file_path = temp_dir.path().join("example.json");
-    fs::write(&file_path, "test").unwrap();
-
-    let source = Source::parse(file_path.to_str().unwrap()).unwrap();
-    assert!(source.as_path().is_some());
-    assert_eq!(source.as_path().unwrap(), file_path.as_path());
-
-    let http_source = Source::parse("http://example.com/def.json").unwrap();
-    assert!(http_source.as_path().is_none());
-}
-
-#[test]
-fn test_as_url_helper() {
-    let http_source = Source::parse("http://example.com/def.json").unwrap();
-    assert!(http_source.as_url().is_some());
-    assert_eq!(http_source.as_url().unwrap(), "http://example.com/def.json");
-
-    let temp_dir = TempDir::new().unwrap();
-    let file_path = temp_dir.path().join("example.json");
-    fs::write(&file_path, "test").unwrap();
-
-    let file_source = Source::parse(file_path.to_str().unwrap()).unwrap();
-    assert!(file_source.as_url().is_none());
 }

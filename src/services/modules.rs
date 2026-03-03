@@ -1,3 +1,5 @@
+use crate::services::common::{fetch_payload, Filter, Payload};
+pub use crate::services::common::{SortBy, SortOrder};
 use crate::{database, models, schema, utils};
 use anyhow::{Context, Result};
 use aws_sdk_s3;
@@ -6,72 +8,15 @@ use diesel::prelude::*;
 use futures::stream::TryStreamExt;
 use http_body_util::StreamBody;
 use reqwest;
-use serde::{Deserialize, Serialize};
-use tokio::fs;
 
-#[derive(Debug, Deserialize)]
-pub enum SortBy {
-    Id,
-    Name,
-    Type,
-}
-
-#[derive(Debug, Deserialize)]
-pub enum SortOrder {
-    Asc,
-    Desc,
-}
-
-#[derive(Debug, Deserialize, Default)]
-pub struct ModuleFilter {
-    pub query: Option<String>,
-    pub is_enabled: Option<bool>,
-    pub r#type: Option<models::ModuleType>,
-    pub limit: Option<i32>,
-    pub offset: Option<i32>,
-    pub sort_by: Option<SortBy>,
-    pub sort_order: Option<SortOrder>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct ModulePayload {
-    pub id: String,
-    pub name: String,
-    pub r#type: models::ModuleType,
-    pub description: String,
-    pub file_url: String,
-    pub digest: String,
-    pub source_url: Option<String>,
-}
+pub type ModulePayload = Payload<models::ModuleType>;
+pub type ModuleFilter = Filter<models::ModuleType>;
 
 async fn fetch_module(
     http_client: &reqwest::Client,
     source: &utils::source::Source,
 ) -> Result<ModulePayload> {
-    match source {
-        utils::source::Source::Http(url) => {
-            let module_payload = http_client
-                .get(url)
-                .header("User-Agent", "MCI/1.0")
-                .send()
-                .await
-                .context("Failed to send HTTP request")?
-                .error_for_status()
-                .context("HTTP request returned error status")?
-                .json::<ModulePayload>()
-                .await
-                .context("Failed to parse module JSON from response")?;
-            Ok(module_payload)
-        }
-        utils::source::Source::File(path) => {
-            let content = fs::read_to_string(path)
-                .await
-                .context("Failed to read module file")?;
-            let module_payload = serde_json::from_str::<ModulePayload>(&content)
-                .context("Failed to parse module JSON")?;
-            Ok(module_payload)
-        }
-    }
+    fetch_payload::<ModulePayload>(http_client, source, "module").await
 }
 
 fn db_update_module(
@@ -279,7 +224,3 @@ pub async fn update_module_from_source(
 
     db_update_module(conn, module_id, &update_data).context("Failed to update module in database")
 }
-
-#[cfg(test)]
-#[path = "modules_tests.rs"]
-mod tests;

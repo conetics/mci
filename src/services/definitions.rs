@@ -1,3 +1,5 @@
+use crate::services::common::{fetch_payload, Filter, Payload};
+pub use crate::services::common::{SortBy, SortOrder};
 use crate::{database, models, schema, utils};
 use anyhow::{Context, Result};
 use aws_sdk_s3;
@@ -6,72 +8,15 @@ use diesel::prelude::*;
 use futures::stream::TryStreamExt;
 use http_body_util::StreamBody;
 use reqwest;
-use serde::{Deserialize, Serialize};
-use tokio::fs;
 
-#[derive(Debug, Deserialize)]
-pub enum SortBy {
-    Id,
-    Name,
-    Type,
-}
-
-#[derive(Debug, Deserialize)]
-pub enum SortOrder {
-    Asc,
-    Desc,
-}
-
-#[derive(Debug, Deserialize, Default)]
-pub struct DefinitionFilter {
-    pub query: Option<String>,
-    pub is_enabled: Option<bool>,
-    pub r#type: Option<String>,
-    pub limit: Option<i32>,
-    pub offset: Option<i32>,
-    pub sort_by: Option<SortBy>,
-    pub sort_order: Option<SortOrder>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct DefinitionPayload {
-    pub id: String,
-    pub name: String,
-    pub r#type: String,
-    pub description: String,
-    pub file_url: String,
-    pub digest: String,
-    pub source_url: Option<String>,
-}
+pub type DefinitionPayload = Payload<String>;
+pub type DefinitionFilter = Filter<String>;
 
 async fn fetch_definition(
     http_client: &reqwest::Client,
     source: &utils::source::Source,
 ) -> Result<DefinitionPayload> {
-    match source {
-        utils::source::Source::Http(url) => {
-            let definition_payload = http_client
-                .get(url)
-                .header("User-Agent", "MCI/1.0")
-                .send()
-                .await
-                .context("Failed to send HTTP request")?
-                .error_for_status()
-                .context("HTTP request returned error status")?
-                .json::<DefinitionPayload>()
-                .await
-                .context("Failed to parse definition JSON from response")?;
-            Ok(definition_payload)
-        }
-        utils::source::Source::File(path) => {
-            let content = fs::read_to_string(path)
-                .await
-                .context("Failed to read definition file")?;
-            let definition_payload = serde_json::from_str::<DefinitionPayload>(&content)
-                .context("Failed to parse definition JSON")?;
-            Ok(definition_payload)
-        }
-    }
+    fetch_payload::<DefinitionPayload>(http_client, source, "definition").await
 }
 
 fn db_update_definition(
@@ -289,7 +234,3 @@ pub async fn update_definition_from_source(
     db_update_definition(conn, definition_id, &update_data)
         .context("Failed to update definition in database")
 }
-
-#[cfg(test)]
-#[path = "definitions_tests.rs"]
-mod tests;

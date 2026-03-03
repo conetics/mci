@@ -114,11 +114,6 @@ async fn definition_configuration_put_and_get_flow() -> Result<()> {
     Ok(())
 }
 
-/// Verifies that putting an invalid configuration against a definition is rejected and not stored.
-///
-/// This test uploads a JSON Schema requiring a boolean `enabled` property, attempts to PUT a
-/// configuration where `enabled` is a string, asserts the handler responds with HTTP 400, and
-/// confirms no configuration object was written to S3.
 #[tokio::test]
 async fn definition_configuration_put_rejects_invalid() -> Result<()> {
     let (pg_container, s3_container, app, s3_client) = setup_app().await?;
@@ -167,8 +162,6 @@ async fn definition_configuration_put_rejects_invalid() -> Result<()> {
     Ok(())
 }
 
-/// Verifies that retrieving a definition's configuration returns the stored configuration along
-/// with validation results when the configuration violates its schema.
 #[tokio::test]
 async fn definition_configuration_get_returns_validation_errors() -> Result<()> {
     let (pg_container, s3_container, app, s3_client) = setup_app().await?;
@@ -451,8 +444,6 @@ async fn definition_configuration_patch_test_op_failure() -> Result<()> {
     Ok(())
 }
 
-// --- Module configurations ---
-
 #[tokio::test]
 async fn module_configuration_schema_get() -> Result<()> {
     let (pg_container, s3_container, app, s3_client) = setup_app().await?;
@@ -493,8 +484,6 @@ async fn module_configuration_schema_get() -> Result<()> {
     Ok(())
 }
 
-/// Verifies that putting a valid module configuration stores it and that it can be retrieved
-/// with successful schema validation.
 #[tokio::test]
 async fn module_configuration_put_and_get_flow() -> Result<()> {
     let (pg_container, s3_container, app, s3_client) = setup_app().await?;
@@ -782,9 +771,6 @@ async fn module_configuration_patch_rejects_invalid_result() -> Result<()> {
     Ok(())
 }
 
-// --- Delete cascade ---
-
-/// Verifies that deleting a definition also removes its configuration from S3.
 #[tokio::test]
 async fn delete_definition_also_deletes_configuration() -> Result<()> {
     let (pg_container, s3_container, app, s3_client) = setup_app().await?;
@@ -861,7 +847,6 @@ async fn delete_definition_also_deletes_configuration() -> Result<()> {
     Ok(())
 }
 
-/// Verifies that deleting a module also removes its configuration from S3.
 #[tokio::test]
 async fn delete_module_also_deletes_configuration() -> Result<()> {
     let (pg_container, s3_container, app, s3_client) = setup_app().await?;

@@ -256,13 +256,6 @@ async fn update_module_rejects_digest() -> Result<()> {
     Ok(())
 }
 
-/// Installs a module from an HTTP registry, then simulates a registry upgrade and verifies
-/// the module is updated.
-///
-/// This test exercises the install-from-registry flow (POST /modules/install) and the update
-/// flow (POST /modules/{id}/update), asserting that the installed module records the registry
-/// source and that an upgrade replaces the stored module artifact while preserving the original
-/// registry-provided metadata where expected.
 #[tokio::test]
 async fn install_and_upgrade_module_from_http_registry() -> Result<()> {
     let (pg_container, s3_container, app, _) = setup_app().await?;
@@ -359,6 +352,153 @@ async fn install_and_upgrade_module_from_http_registry() -> Result<()> {
     assert_eq!(upgraded.name, "Registry Module");
     assert_eq!(upgraded.description, "Module from registry");
     assert!(matches!(upgraded.type_, ModuleType::Interceptor));
+
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
+
+    Ok(())
+}
+
+async fn create_test_module(
+    app: &axum::Router,
+    id: &str,
+    name: &str,
+    module_type: &str,
+) -> Result<()> {
+    let dir = tempfile::TempDir::new()?;
+    let file_path = dir.path().join("module.bin");
+    let content = format!("content-{}", id);
+    std::fs::write(&file_path, content.as_bytes())?;
+    let digest = format!("sha256:{:x}", Sha256::digest(content.as_bytes()));
+
+    let payload = json!({
+        "id": id,
+        "name": name,
+        "type": module_type,
+        "description": format!("Description for {}", id),
+        "file_url": file_path.to_string_lossy(),
+        "digest": digest,
+    });
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/modules")
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&payload)?))
+                .unwrap(),
+        )
+        .await?;
+
+    assert_eq!(resp.status(), StatusCode::CREATED, "setup POST failed for {}", id);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn list_modules_filter_by_type() -> Result<()> {
+    let (pg_container, s3_container, app, _) = setup_app().await?;
+
+    create_test_module(&app, "filter-mod-a", "Alpha", "language").await?;
+    create_test_module(&app, "filter-mod-b", "Beta", "language").await?;
+    create_test_module(&app, "filter-mod-c", "Gamma", "sandbox").await?;
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/modules?type=language")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await?;
+
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = read_body(resp).await?;
+    let results: Vec<Module> = serde_json::from_slice(&body)?;
+
+    assert_eq!(results.len(), 2);
+    assert!(results.iter().all(|m| matches!(m.type_, ModuleType::Language)));
+
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn list_modules_filter_by_query_string() -> Result<()> {
+    let (pg_container, s3_container, app, _) = setup_app().await?;
+
+    create_test_module(&app, "qf-unique-mod", "Unique Module", "hook").await?;
+    create_test_module(&app, "qf-other-mod", "Other Module", "hook").await?;
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/modules?query=unique-mod")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await?;
+
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = read_body(resp).await?;
+    let results: Vec<Module> = serde_json::from_slice(&body)?;
+
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].id, "qf-unique-mod");
+
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn create_module_with_duplicate_id_is_rejected() -> Result<()> {
+    let (pg_container, s3_container, app, _) = setup_app().await?;
+
+    create_test_module(&app, "dup-mod-id", "First", "proxy").await?;
+
+    let dir = tempfile::TempDir::new()?;
+    let file_path = dir.path().join("module.bin");
+    std::fs::write(&file_path, b"content")?;
+    let digest = format!("sha256:{:x}", Sha256::digest(b"content"));
+
+    let payload = json!({
+        "id": "dup-mod-id",
+        "name": "Second",
+        "type": "proxy",
+        "description": "Duplicate attempt",
+        "file_url": file_path.to_string_lossy(),
+        "digest": digest,
+    });
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/modules")
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&payload)?))
+                .unwrap(),
+        )
+        .await?;
+
+    assert_ne!(
+        resp.status(),
+        StatusCode::CREATED,
+        "duplicate POST must not return 201"
+    );
 
     pg_container.stop().await.ok();
     s3_container.stop().await.ok();
