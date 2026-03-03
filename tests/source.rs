@@ -68,9 +68,12 @@ fn relative_path_to_existing_file_parses_correctly() {
     let path = dir.path().join("example.json");
     fs::write(&path, b"test").unwrap();
 
+    let original_dir = std::env::current_dir().unwrap();
     std::env::set_current_dir(&dir).unwrap();
 
     let result = Source::parse("./example.json");
+
+    std::env::set_current_dir(original_dir).unwrap();
 
     assert!(result.is_ok());
 }
