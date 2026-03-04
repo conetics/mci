@@ -4,7 +4,12 @@ use reqwest::{Client, Response};
 use std::path;
 
 pub async fn stream_content_from_url(http_client: &Client, url: &str) -> Result<Response> {
-    let response = http_client.get(url).send().await?.error_for_status()?;
+    let response = http_client
+        .get(url)
+        .header("User-Agent", "MCI/1.0")
+        .send()
+        .await?
+        .error_for_status()?;
     Ok(response)
 }
 
