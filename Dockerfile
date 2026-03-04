@@ -15,6 +15,7 @@ RUN mkdir src && echo "fn main() {}" > src/main.rs && \
 
 COPY . .
 
+RUN chmod +x scripts/generate_certs.sh && ./scripts/generate_certs.sh
 RUN cargo build --release
 
 FROM debian:bookworm-slim
@@ -30,9 +31,7 @@ COPY --from=builder /app/target/release/mci .
 
 COPY migrations ./migrations
 COPY diesel.toml ./diesel.toml
-
-RUN chmod +x scripts/generate_certs.sh && ./scripts/generate_certs.sh
-COPY certs ./certs
+COPY --from=builder /app/certs ./certs
 
 EXPOSE 7687
 
