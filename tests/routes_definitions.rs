@@ -22,7 +22,7 @@ async fn get_definitions_returns_empty_list() -> Result<()> {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/definitions")
+                .uri("/v1/definitions")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -68,7 +68,7 @@ async fn create_get_update_delete_definition_flow() -> Result<()> {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/definitions")
+                .uri("/v1/definitions")
                 .header(http::header::CONTENT_TYPE, "application/json")
                 .body(Body::from(serde_json::to_vec(&payload)?))
                 .unwrap(),
@@ -88,7 +88,7 @@ async fn create_get_update_delete_definition_flow() -> Result<()> {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/definitions/api-def-1")
+                .uri("/v1/definitions/api-def-1")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -111,7 +111,7 @@ async fn create_get_update_delete_definition_flow() -> Result<()> {
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri("/definitions/api-def-1")
+                .uri("/v1/definitions/api-def-1")
                 .header(http::header::CONTENT_TYPE, "application/json")
                 .body(Body::from(serde_json::to_vec(&update_payload)?))
                 .unwrap(),
@@ -131,7 +131,7 @@ async fn create_get_update_delete_definition_flow() -> Result<()> {
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri("/definitions/api-def-1")
+                .uri("/v1/definitions/api-def-1")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -144,7 +144,7 @@ async fn create_get_update_delete_definition_flow() -> Result<()> {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/definitions/api-def-1")
+                .uri("/v1/definitions/api-def-1")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -195,7 +195,7 @@ async fn update_definition_rejects_digest() -> Result<()> {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/definitions")
+                .uri("/v1/definitions")
                 .header(http::header::CONTENT_TYPE, "application/json")
                 .body(Body::from(serde_json::to_vec(&create_payload)?))
                 .unwrap(),
@@ -213,7 +213,7 @@ async fn update_definition_rejects_digest() -> Result<()> {
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri("/definitions/upd-test")
+                .uri("/v1/definitions/upd-test")
                 .header(http::header::CONTENT_TYPE, "application/json")
                 .body(Body::from(serde_json::to_vec(&digest_patch)?))
                 .unwrap(),
@@ -241,7 +241,7 @@ async fn update_definition_rejects_digest() -> Result<()> {
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri("/definitions/upd-test")
+                .uri("/v1/definitions/upd-test")
                 .header(http::header::CONTENT_TYPE, "application/json")
                 .body(Body::from(serde_json::to_vec(&file_url_patch)?))
                 .unwrap(),
@@ -292,7 +292,7 @@ async fn install_and_upgrade_definition_from_http_registry() -> Result<()> {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/definitions/install")
+                .uri("/v1/definitions/install")
                 .header(http::header::CONTENT_TYPE, "application/json")
                 .body(Body::from(serde_json::to_vec(&install_payload)?))
                 .unwrap(),
@@ -337,7 +337,7 @@ async fn install_and_upgrade_definition_from_http_registry() -> Result<()> {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/definitions/api-def-2/update")
+                .uri("/v1/definitions/api-def-2/update")
                 .body(Body::empty())
                 .unwrap(),
         )
