@@ -88,15 +88,33 @@ pub async fn delete_definition(
 ) -> Result<http::StatusCode, errors::AppError> {
     let mut conn = state.db_pool.get()?;
     let s3_client = state.s3_client.clone();
-    let rows_deleted = services::definitions::delete_definition(&mut conn, &s3_client, &id).await?;
+    let id_clone = id.clone();
+    let rows_deleted = tokio::task::spawn_blocking(move || {
+        services::definitions::db_delete_definition(&mut conn, &id_clone)
+    })
+    .await??;
     if rows_deleted == 0 {
         return Err(errors::AppError::not_found(format!(
             "Definition with id '{}' not found",
             id
         )));
     }
-    // DB row removed successfully. Delegate S3 cleanup to a background task
-    // so the caller always receives 204 regardless of cleanup outcome.
+    let artifact_client = s3_client.clone();
+    let artifact_id = id.clone();
+    tokio::spawn(async move {
+        if let Err(e) =
+            services::definitions::cleanup_definition_artifacts(&artifact_client, &artifact_id)
+                .await
+        {
+            tracing::warn!(
+                id = %artifact_id,
+                error = %e,
+                "Best-effort definition artifact cleanup failed; \
+                 orphaned S3 objects may remain under the 'definitions/{}/' prefix",
+                artifact_id,
+            );
+        }
+    });
     spawn_cleanup_task(s3_client, id, ResourceKind::Definition);
     Ok(http::StatusCode::NO_CONTENT)
 }

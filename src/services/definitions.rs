@@ -40,18 +40,19 @@ pub fn get_definition(
         .first(conn)
 }
 
-pub async fn delete_definition(
+pub fn db_delete_definition(
     conn: &mut database::DbConnection,
+    definition_id: &str,
+) -> QueryResult<usize> {
+    diesel::delete(schema::definitions::table.find(definition_id)).execute(conn)
+}
+
+pub async fn cleanup_definition_artifacts(
     s3_client: &aws_sdk_s3::Client,
     definition_id: &str,
-) -> Result<usize> {
-    let rows_deleted =
-        diesel::delete(schema::definitions::table.find(definition_id)).execute(conn)?;
-    if rows_deleted > 0 {
-        let prefix = format!("{}/", definition_id);
-        utils::s3::delete_objects_with_prefix(s3_client, "definitions", &prefix).await?;
-    }
-    Ok(rows_deleted)
+) -> Result<()> {
+    let prefix = format!("{}/", definition_id);
+    utils::s3::delete_objects_with_prefix(s3_client, "definitions", &prefix).await
 }
 
 pub fn update_definition(
