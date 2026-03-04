@@ -102,12 +102,22 @@ pub fn list_modules(
 }
 
 pub async fn create_module(
-    conn: &mut database::DbConnection,
+    pool: &database::PgPool,
     http_client: &reqwest::Client,
     s3_client: &aws_sdk_s3::Client,
     payload: &ModulePayload,
 ) -> Result<models::Module> {
-    match get_module(conn, &payload.id) {
+    let module_id = payload.id.clone();
+    let pool_clone = pool.clone();
+    let existing = tokio::task::spawn_blocking(move || -> Result<QueryResult<models::Module>> {
+        let mut conn = pool_clone.get().context("Failed to acquire db connection")?;
+        Ok(get_module(&mut conn, &module_id))
+    })
+    .await
+    .context("DB existence-check task panicked")?
+    ?;
+
+    match existing {
         Ok(_) => {
             return Err(crate::errors::AppError::conflict(format!(
                 "Module with ID '{}' already exists",
@@ -156,15 +166,21 @@ pub async fn create_module(
         source_url: payload.source_url.clone(),
     };
 
-    diesel::insert_into(schema::modules::table)
-        .values(&new_module)
-        .returning(models::Module::as_returning())
-        .get_result(conn)
-        .context("Failed to save module to database")
+    let pool_clone = pool.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool_clone.get().context("Failed to acquire db connection")?;
+        diesel::insert_into(schema::modules::table)
+            .values(&new_module)
+            .returning(models::Module::as_returning())
+            .get_result(&mut conn)
+            .context("Failed to save module to database")
+    })
+    .await
+    .context("DB insert task panicked")?
 }
 
 pub async fn create_module_from_registry(
-    conn: &mut database::DbConnection,
+    pool: &database::PgPool,
     http_client: &reqwest::Client,
     s3_client: &aws_sdk_s3::Client,
     source_input: &str,
@@ -178,17 +194,26 @@ pub async fn create_module_from_registry(
         payload.source_url = Some(source_input.to_string());
     }
 
-    create_module(conn, http_client, s3_client, &payload).await
+    create_module(pool, http_client, s3_client, &payload).await
 }
 
 pub async fn update_module_from_source(
-    conn: &mut database::DbConnection,
+    pool: &database::PgPool,
     http_client: &reqwest::Client,
     s3_client: &aws_sdk_s3::Client,
     module_id: &str,
 ) -> Result<models::Module> {
-    let module =
-        get_module(conn, module_id).context("Failed to fetch current module from database")?;
+    let pool_clone = pool.clone();
+    let module_id_owned = module_id.to_string();
+    let module = tokio::task::spawn_blocking(move || {
+        let mut conn = pool_clone.get().context("Failed to acquire db connection")?;
+        get_module(&mut conn, &module_id_owned)
+            .context("Failed to fetch current module from database")
+    })
+    .await
+    .context("DB fetch task panicked")?
+    ?;
+
     let source_url_str = module
         .source_url
         .as_ref()
@@ -235,5 +260,13 @@ pub async fn update_module_from_source(
         ..Default::default()
     };
 
-    db_update_module(conn, module_id, &update_data).context("Failed to update module in database")
+    let pool_clone = pool.clone();
+    let module_id_owned = module_id.to_string();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool_clone.get().context("Failed to acquire db connection")?;
+        db_update_module(&mut conn, &module_id_owned, &update_data)
+            .context("Failed to update module in database")
+    })
+    .await
+    .context("DB update task panicked")?
 }

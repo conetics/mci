@@ -56,7 +56,6 @@ async fn create_module_from_http_source() -> Result<()> {
         let meta_url = format!("{}/meta.json", mock.uri());
 
         move || -> Result<Module> {
-            let mut conn = pool.get()?;
             let payload = ModulePayload {
                 id: "mod-1".into(),
                 name: "Example Name".into(),
@@ -68,7 +67,7 @@ async fn create_module_from_http_source() -> Result<()> {
             };
 
             let result: Result<Module> = tokio::runtime::Handle::current().block_on(async {
-                create_module(&mut conn, &http_client, &s3_client, &payload).await
+                create_module(&pool, &http_client, &s3_client, &payload).await
             });
             result
         }
@@ -139,7 +138,6 @@ async fn create_module_conflict_errors() -> Result<()> {
         let http_client = http_client.clone();
 
         move || -> Result<()> {
-            let mut conn = pool.get()?;
             let payload = ModulePayload {
                 id: "mod-2".into(),
                 name: "Name".into(),
@@ -150,7 +148,7 @@ async fn create_module_conflict_errors() -> Result<()> {
                 source_url: None,
             };
             let result: Result<Module> = tokio::runtime::Handle::current().block_on(async {
-                create_module(&mut conn, &http_client, &s3_client, &payload).await
+                create_module(&pool, &http_client, &s3_client, &payload).await
             });
             result.map(|_| ())
         }
@@ -168,7 +166,6 @@ async fn create_module_conflict_errors() -> Result<()> {
         let meta_url = meta_url.clone();
 
         move || -> Result<()> {
-            let mut conn = pool.get()?;
             let payload = ModulePayload {
                 id: "mod-2".into(),
                 name: "Name".into(),
@@ -179,7 +176,7 @@ async fn create_module_conflict_errors() -> Result<()> {
                 source_url: Some(meta_url),
             };
             let result: Result<Module> = tokio::runtime::Handle::current().block_on(async {
-                create_module(&mut conn, &http_client, &s3_client, &payload).await
+                create_module(&pool, &http_client, &s3_client, &payload).await
             });
             result?;
             Ok(())
@@ -240,9 +237,8 @@ async fn create_module_from_registry_sets_source_url() -> Result<()> {
         let registry_url = registry_url.clone();
 
         move || -> Result<Module> {
-            let mut conn = pool.get()?;
             let result: Result<Module> = tokio::runtime::Handle::current().block_on(async {
-                create_module_from_registry(&mut conn, &http_client, &s3_client, &registry_url)
+                create_module_from_registry(&pool, &http_client, &s3_client, &registry_url)
                     .await
             });
             result
@@ -331,9 +327,8 @@ async fn update_module_from_source_updates_when_digest_changes() -> Result<()> {
         let s3_client = s3_client.clone();
 
         move || -> Result<Module> {
-            let mut conn = pool.get()?;
             let result: Result<Module> = tokio::runtime::Handle::current().block_on(async {
-                update_module_from_source(&mut conn, &http_client, &s3_client, "mod-4").await
+                update_module_from_source(&pool, &http_client, &s3_client, "mod-4").await
             });
             result
         }

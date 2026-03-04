@@ -19,12 +19,13 @@ pub async fn create_module(
     extract::State(state): extract::State<AppState>,
     Json(payload): Json<services::modules::ModulePayload>,
 ) -> Result<(http::StatusCode, Json<models::modules::Module>), errors::AppError> {
-    let db_pool = state.db_pool.clone();
-    let http_client = state.http_client.clone();
-    let s3_client = state.s3_client.clone();
-    let module =
-        services::modules::create_module(&mut db_pool.get()?, &http_client, &s3_client, &payload)
-            .await?;
+    let module = services::modules::create_module(
+        &state.db_pool,
+        &state.http_client,
+        &state.s3_client,
+        &payload,
+    )
+    .await?;
     Ok((http::StatusCode::CREATED, Json(module)))
 }
 
@@ -33,13 +34,10 @@ pub async fn install_module(
     Json(request): Json<InstallRequest>,
 ) -> Result<(http::StatusCode, Json<models::modules::Module>), errors::AppError> {
     request.validate()?;
-    let db_pool = state.db_pool.clone();
-    let http_client = state.http_client.clone();
-    let s3_client = state.s3_client.clone();
     let module = services::modules::create_module_from_registry(
-        &mut db_pool.get()?,
-        &http_client,
-        &s3_client,
+        &state.db_pool,
+        &state.http_client,
+        &state.s3_client,
         &request.source,
     )
     .await?;
@@ -50,13 +48,10 @@ pub async fn upgrade_module(
     extract::State(state): extract::State<AppState>,
     extract::Path(id): extract::Path<String>,
 ) -> Result<Json<models::modules::Module>, errors::AppError> {
-    let db_pool = state.db_pool.clone();
-    let http_client = state.http_client.clone();
-    let s3_client = state.s3_client.clone();
     let module = services::modules::update_module_from_source(
-        &mut db_pool.get()?,
-        &http_client,
-        &s3_client,
+        &state.db_pool,
+        &state.http_client,
+        &state.s3_client,
         &id,
     )
     .await?;
