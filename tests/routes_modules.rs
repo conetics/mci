@@ -494,10 +494,10 @@ async fn create_module_with_duplicate_id_is_rejected() -> Result<()> {
         )
         .await?;
 
-    assert_ne!(
-        resp.status(),
-        StatusCode::CREATED,
-        "duplicate POST must not return 201"
+    assert!(
+        resp.status().is_client_error(),
+        "duplicate POST should return 4xx, got {}",
+        resp.status()
     );
 
     pg_container.stop().await.ok();
