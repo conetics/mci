@@ -45,9 +45,13 @@ pub async fn delete_definition(
     s3_client: &aws_sdk_s3::Client,
     definition_id: &str,
 ) -> Result<usize> {
-    let prefix = format!("{}/", definition_id);
-    utils::s3::delete_objects_with_prefix(s3_client, "definitions", &prefix).await?;
-    Ok(diesel::delete(schema::definitions::table.find(definition_id)).execute(conn)?)
+    let rows_deleted =
+        diesel::delete(schema::definitions::table.find(definition_id)).execute(conn)?;
+    if rows_deleted > 0 {
+        let prefix = format!("{}/", definition_id);
+        utils::s3::delete_objects_with_prefix(s3_client, "definitions", &prefix).await?;
+    }
+    Ok(rows_deleted)
 }
 
 pub fn update_definition(
