@@ -55,6 +55,42 @@ pub async fn cleanup_definition_artifacts(
     utils::s3::delete_objects_with_prefix(s3_client, "definitions", &prefix).await
 }
 
+pub async fn delete_definition(
+    pool: &database::PgPool,
+    s3_client: &aws_sdk_s3::Client,
+    definition_id: &str,
+) -> Result<usize> {
+    let definition_id_owned = definition_id.to_string();
+    let pool_clone = pool.clone();
+    let s3_client_clone = s3_client.clone();
+    let handle = tokio::runtime::Handle::current();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool_clone.get().context("Failed to acquire db connection")?;
+        conn.transaction::<usize, anyhow::Error, _>(|conn| {
+            let rows =
+                diesel::delete(schema::definitions::table.find(&definition_id_owned))
+                    .execute(conn)
+                    .context("Failed to delete definition from database")?;
+            if rows > 0 {
+                let prefix = format!("{}/", definition_id_owned);
+                handle
+                    .block_on(utils::s3::delete_objects_with_prefix(
+                        &s3_client_clone,
+                        "definitions",
+                        &prefix,
+                    ))
+                    .context(
+                        "Failed to delete definition S3 artifacts; rolling back DB deletion",
+                    )?;
+            }
+            Ok(rows)
+        })
+        .context("Delete definition transaction failed")
+    })
+    .await
+    .context("DB delete transaction task panicked")?
+}
+
 pub fn update_definition(
     conn: &mut database::DbConnection,
     definition_id: &str,
