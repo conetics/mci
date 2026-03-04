@@ -52,7 +52,10 @@ impl error::Error for AppError {}
 
 impl From<anyhow::Error> for AppError {
     fn from(err: anyhow::Error) -> Self {
-        AppError::Internal(err)
+        match err.downcast::<AppError>() {
+            Ok(app_err) => app_err,
+            Err(other) => AppError::Internal(other),
+        }
     }
 }
 
