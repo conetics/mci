@@ -107,8 +107,17 @@ pub async fn create_module(
     s3_client: &aws_sdk_s3::Client,
     payload: &ModulePayload,
 ) -> Result<models::Module> {
-    if get_module(conn, &payload.id).is_ok() {
-        anyhow::bail!("Conflict: Module with ID '{}' already exists", payload.id);
+    match get_module(conn, &payload.id) {
+        Ok(_) => {
+            return Err(crate::errors::AppError::conflict(format!(
+                "Module with ID '{}' already exists",
+                payload.id
+            )).into());
+        }
+        Err(diesel::result::Error::NotFound) => {}
+        Err(err) => {
+            return Err(crate::errors::AppError::internal(err).context("Failed to check existing module"));
+        }
     }
 
     let module_source = utils::source::Source::parse(&payload.file_url)?;
