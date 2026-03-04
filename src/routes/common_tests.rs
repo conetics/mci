@@ -1,7 +1,7 @@
 use super::*;
 
 #[cfg(test)]
-mod tests {
+mod common_tests {
     use super::*;
     use anyhow::anyhow;
 

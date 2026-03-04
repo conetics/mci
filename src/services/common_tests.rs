@@ -142,7 +142,7 @@ mod test_filter {
         });
         let f: Filter<String> = serde_json::from_value(json).unwrap();
         assert_eq!(f.query.unwrap(), "foo");
-        assert_eq!(f.is_enabled.unwrap(), true);
+        assert!(f.is_enabled.unwrap());
         assert_eq!(f.limit.unwrap(), 10);
         assert_eq!(f.offset.unwrap(), 5);
     }
@@ -221,7 +221,7 @@ mod test_fetch_payload {
         Mock::given(method("GET"))
             .and(path("/payload"))
             .and(header("User-Agent", "MCI/1.0"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(&test_payload()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(test_payload()))
             .mount(&server)
             .await;
 
