@@ -1,6 +1,6 @@
 use crate::services::common::{validate_schema, ResourceKind};
 use anyhow::{Context, Result};
-use aws_sdk_s3::{primitives, Client};
+use aws_sdk_s3::{error, operation, primitives, Client};
 use serde_json::Value as JsonValue;
 
 pub fn validate_configuration(schema: &JsonValue, configuration: &JsonValue) -> Result<JsonValue> {
@@ -8,13 +8,21 @@ pub fn validate_configuration(schema: &JsonValue, configuration: &JsonValue) -> 
 }
 
 pub async fn get_schema(s3_client: &Client, target: ResourceKind, id: &str) -> Result<JsonValue> {
-    let response = s3_client
+    let send_result = s3_client
         .get_object()
         .bucket(target.config_bucket())
         .key(format!("{}/configuration.schema.json", id))
         .send()
-        .await
-        .context("Failed to get configuration schema from S3")?;
+        .await;
+    let response = match send_result {
+        Ok(r) => r,
+        Err(error::SdkError::ServiceError(err))
+            if matches!(err.err(), operation::get_object::GetObjectError::NoSuchKey(_)) =>
+        {
+            return Err(crate::errors::AppError::not_found("Configuration not found").into());
+        }
+        Err(e) => return Err(e).context("Failed to get configuration schema from S3"),
+    };
     let bytes = response
         .body
         .collect()
@@ -38,11 +46,10 @@ pub async fn get_configuration(
         .await;
     let response = match send_result {
         Ok(r) => r,
-        Err(e) if e.as_service_error().map(|se| se.is_no_such_key()).unwrap_or(false) => {
-            return Err(crate::errors::ServiceError::NotFound(
-                format!("Configuration not found for '{}'", id),
-            )
-            .into());
+        Err(error::SdkError::ServiceError(err))
+            if matches!(err.err(), operation::get_object::GetObjectError::NoSuchKey(_)) =>
+        {
+            return Err(crate::errors::AppError::not_found("Configuration not found").into());
         }
         Err(e) => return Err(e).context("Failed to get configuration from S3"),
     };
@@ -100,8 +107,8 @@ pub async fn patch_configuration(
     let current = match get_configuration(s3_client, target, id).await {
         Ok(config) => config,
         Err(e) => {
-            if e.downcast_ref::<crate::errors::ServiceError>()
-                .map(|se| matches!(se, crate::errors::ServiceError::NotFound(_)))
+            if e.downcast_ref::<crate::errors::AppError>()
+                .map(|ae| matches!(ae, crate::errors::AppError::NotFound(_)))
                 .unwrap_or(false)
             {
                 serde_json::json!({})

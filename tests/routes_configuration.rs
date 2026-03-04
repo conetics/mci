@@ -617,6 +617,82 @@ async fn definition_configuration_patch_propagates_corrupt_config_error() -> Res
 }
 
 #[tokio::test]
+async fn definition_configuration_schema_get_not_found() -> Result<()> {
+    let (pg_container, s3_container, app, _s3_client) = setup_app().await?;
+
+    let resp = get_request(&app, "/definitions/no-such-def/configuration/schema").await?;
+
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
+    Ok(())
+}
+
+#[tokio::test]
+async fn definition_configuration_get_not_found() -> Result<()> {
+    let (pg_container, s3_container, app, s3_client) = setup_app().await?;
+
+    let schema = json!({
+        "type": "object",
+        "properties": { "enabled": { "type": "boolean" } }
+    });
+    seed_schema(
+        &s3_client,
+        "definition-configurations",
+        "cfg-def-missing-config",
+        &schema,
+    )
+    .await?;
+
+    let resp = get_request(&app, "/definitions/cfg-def-missing-config/configuration").await?;
+
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
+    Ok(())
+}
+
+#[tokio::test]
+async fn module_configuration_schema_get_not_found() -> Result<()> {
+    let (pg_container, s3_container, app, _s3_client) = setup_app().await?;
+
+    let resp = get_request(&app, "/modules/no-such-module/configuration/schema").await?;
+
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
+    Ok(())
+}
+
+#[tokio::test]
+async fn module_configuration_get_not_found() -> Result<()> {
+    let (pg_container, s3_container, app, s3_client) = setup_app().await?;
+
+    let schema = json!({
+        "type": "object",
+        "properties": { "port": { "type": "integer" } }
+    });
+    seed_schema(
+        &s3_client,
+        "module-configurations",
+        "cfg-mod-missing-config",
+        &schema,
+    )
+    .await?;
+
+    let resp = get_request(&app, "/modules/cfg-mod-missing-config/configuration").await?;
+
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
+    Ok(())
+}
+
+#[tokio::test]
 async fn module_configuration_patch_propagates_corrupt_config_error() -> Result<()> {
     let (pg_container, s3_container, app, s3_client) = setup_app().await?;
 
