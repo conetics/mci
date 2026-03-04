@@ -14,6 +14,7 @@ pub struct Config {
     pub s3_access_key: String,
     pub s3_secret_key: String,
     pub s3_kms_key_id: Option<String>,
+    pub allowed_origins: Option<String>,
 }
 
 impl Config {

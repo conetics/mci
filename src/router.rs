@@ -18,6 +18,30 @@ pub fn create_router(state: state::AppState) -> Router {
         .layer(propagate_header::PropagateHeaderLayer::new(
             http::header::HeaderName::from_static("x-request-id"),
         ))
-        .layer(cors::CorsLayer::permissive())
+        .layer(if cfg!(debug_assertions) {
+            cors::CorsLayer::permissive()
+        } else {
+            let origins: Vec<http::HeaderValue> = state
+                .config
+                .allowed_origins
+                .as_deref()
+                .unwrap_or_default()
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .filter_map(|s| s.parse().ok())
+                .collect();
+            cors::CorsLayer::new()
+                .allow_origin(origins)
+                .allow_methods([
+                    http::Method::GET,
+                    http::Method::POST,
+                    http::Method::PUT,
+                    http::Method::PATCH,
+                    http::Method::DELETE,
+                ])
+                .allow_headers([http::header::CONTENT_TYPE, http::header::AUTHORIZATION])
+                .max_age(std::time::Duration::from_secs(3600))
+        })
         .with_state(state)
 }
