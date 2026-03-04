@@ -40,8 +40,22 @@ pub async fn serve(
     let cert_path = config.cert_path.clone();
     let key_path = config.key_path.clone();
 
+    let tls_pair = match (cert_path, key_path) {
+        (Some(cert_path), Some(key_path)) => Some((cert_path, key_path)),
+        (None, None) => None,
+        _ => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "TLS configuration error for {addr}: both cert_path and key_path must be provided ",
+                    addr = actual_addr
+                ),
+            ).into());
+        }
+    };
+
     let server_future = async move {
-        if let (Some(cert_path), Some(key_path)) = (cert_path, key_path) {
+        if let Some((cert_path, key_path)) = tls_pair {
             info!("Starting TLS server on {}", actual_addr);
 
             let tls_config = tls_rustls::RustlsConfig::from_pem_file(
