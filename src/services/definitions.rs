@@ -177,11 +177,17 @@ pub async fn create_definition(
 
     match insert_result {
         Ok(definition) => Ok(definition),
-        Err(err) if is_unique_violation(&err) => Err(crate::errors::AppError::conflict(
-            format!("Definition with ID '{}' already exists", payload.id),
-        )
-        .into()),
-        Err(err) => Err(anyhow::Error::new(err)).context("Failed to save definition to database"),
+        Err(err) if is_unique_violation(&err) => {
+            let _ = utils::s3::delete_object(s3_client, "definitions", &obj_key).await;
+            Err(crate::errors::AppError::conflict(
+                format!("Definition with ID '{}' already exists", payload.id),
+            )
+            .into())
+        }
+        Err(err) => {
+            let _ = utils::s3::delete_object(s3_client, "definitions", &obj_key).await;
+            Err(anyhow::Error::new(err)).context("Failed to save definition to database")
+        }
     }
 }
 
@@ -257,6 +263,11 @@ pub async fn update_definition_from_source(
         ..Default::default()
     };
 
-    db_update_definition(conn, definition_id, &update_data)
-        .context("Failed to update definition in database")
+    match db_update_definition(conn, definition_id, &update_data) {
+        Ok(def) => Ok(def),
+        Err(err) => {
+            let _ = utils::s3::delete_object(s3_client, "definitions", &obj_key).await;
+            Err(anyhow::Error::new(err)).context("Failed to update definition in database")
+        }
+    }
 }

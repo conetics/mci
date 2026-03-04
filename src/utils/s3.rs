@@ -32,6 +32,17 @@ pub async fn delete_objects_with_prefix(
     Ok(())
 }
 
+pub async fn delete_object(client: &Client, bucket: &str, key: &str) -> Result<()> {
+    client
+        .delete_object()
+        .bucket(bucket)
+        .key(key)
+        .send()
+        .await
+        .context(format!("Failed to delete S3 object '{}/{}'", bucket, key))?;
+    Ok(())
+}
+
 pub async fn put_stream(
     client: &Client,
     bucket: &str,

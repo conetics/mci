@@ -637,3 +637,232 @@ async fn list_definitions_filters_and_sorting() -> Result<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn create_definition_compensates_s3_on_db_unique_violation() -> Result<()> {
+    let (pg_container, pool) = initialize_pg().await?;
+    let (s3_container, s3_client) = initialize_s3().await?;
+
+    s3_client
+        .create_bucket()
+        .bucket("definitions")
+        .send()
+        .await?;
+
+    let mock = MockServer::start().await;
+    let file_body = b"comp-create-body";
+    let digest_str = format!("sha256:{:x}", Sha256::digest(file_body));
+
+    Mock::given(method("GET"))
+        .and(path("/file.json"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_raw(file_body.as_ref(), "application/octet-stream")
+                .set_delay(std::time::Duration::from_millis(150)),
+        )
+        .mount(&mock)
+        .await;
+
+    let file_url = format!("{}/file.json", mock.uri());
+    let digest_for_task = digest_str.clone();
+    let file_url_for_task = file_url.clone();
+
+    let race_handle = tokio::spawn({
+        let pool = pool.clone();
+        let digest = digest_str.clone();
+        async move {
+            tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+            tokio::task::spawn_blocking(move || -> Result<()> {
+                let mut conn = pool.get()?;
+                diesel::insert_into(definitions)
+                    .values(&NewDefinition {
+                        id: "def-comp-create".into(),
+                        type_: "comp-type".into(),
+                        name: "Comp Create".into(),
+                        description: "comp desc".into(),
+                        digest,
+                        source_url: None,
+                    })
+                    .execute(&mut conn)?;
+                Ok(())
+            })
+            .await?
+        }
+    });
+
+    let http_client = reqwest::Client::new();
+
+    let create_result = tokio::task::spawn_blocking({
+        let pool = pool.clone();
+        let http_client = http_client.clone();
+        let s3_client = s3_client.clone();
+
+        move || -> Result<()> {
+            let mut conn = pool.get()?;
+            let payload = DefinitionPayload {
+                id: "def-comp-create".into(),
+                name: "Comp Create".into(),
+                r#type: "comp-type".into(),
+                description: "comp desc".into(),
+                file_url: file_url_for_task,
+                digest: digest_for_task,
+                source_url: None,
+            };
+            let r: Result<Definition> = tokio::runtime::Handle::current().block_on(async {
+                create_definition(&mut conn, &http_client, &s3_client, &payload).await
+            });
+            r.map(|_| ())
+        }
+    })
+    .await?;
+
+    race_handle.await??;
+
+    assert!(
+        create_result.is_err(),
+        "expected create_definition to fail due to race-condition unique violation"
+    );
+
+    let list = s3_client
+        .list_objects_v2()
+        .bucket("definitions")
+        .prefix("def-comp-create/")
+        .send()
+        .await?;
+    assert!(
+        list.contents().is_empty(),
+        "S3 object should have been deleted by compensation after DB unique violation"
+    );
+
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn update_definition_from_source_compensates_s3_on_db_failure() -> Result<()> {
+    let (pg_container, pool) = initialize_pg().await?;
+    let (s3_container, s3_client) = initialize_s3().await?;
+
+    s3_client
+        .create_bucket()
+        .bucket("definitions")
+        .send()
+        .await?;
+
+    let mock = MockServer::start().await;
+    let file_body = b"updated-comp-body";
+    let new_digest = format!("sha256:{:x}", Sha256::digest(file_body));
+    let old_digest =
+        "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_string();
+
+    let meta_url = format!("{}/meta.json", mock.uri());
+
+    Mock::given(method("GET"))
+        .and(path("/file-comp.json"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_raw(file_body.as_ref(), "application/octet-stream")
+                .set_delay(std::time::Duration::from_millis(150)),
+        )
+        .mount(&mock)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/meta.json"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(&DefinitionPayload {
+                id: "def-comp-update".into(),
+                name: "Comp Update".into(),
+                r#type: "comp-type".into(),
+                description: "comp desc".into(),
+                file_url: format!("{}/file-comp.json", mock.uri()),
+                digest: new_digest.clone(),
+                source_url: Some(meta_url.clone()),
+            }),
+        )
+        .mount(&mock)
+        .await;
+
+    tokio::task::spawn_blocking({
+        let pool = pool.clone();
+        let old_digest = old_digest.clone();
+        let meta_url = meta_url.clone();
+        move || -> Result<()> {
+            let mut conn = pool.get()?;
+            diesel::insert_into(definitions)
+                .values(&NewDefinition {
+                    id: "def-comp-update".into(),
+                    type_: "comp-type".into(),
+                    name: "Comp Update".into(),
+                    description: "comp desc".into(),
+                    digest: old_digest,
+                    source_url: Some(meta_url),
+                })
+                .execute(&mut conn)?;
+            Ok(())
+        }
+    })
+    .await??;
+
+    let delete_handle = tokio::spawn({
+        let pool = pool.clone();
+        async move {
+            tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+            tokio::task::spawn_blocking(move || -> Result<()> {
+                let mut conn = pool.get()?;
+                diesel::delete(definitions.find("def-comp-update")).execute(&mut conn)?;
+                Ok(())
+            })
+            .await?
+        }
+    });
+
+    let http_client = reqwest::Client::new();
+
+    let update_result = tokio::task::spawn_blocking({
+        let pool = pool.clone();
+        let http_client = http_client.clone();
+        let s3_client = s3_client.clone();
+
+        move || -> Result<()> {
+            let mut conn = pool.get()?;
+            let r: Result<mci::models::Definition> =
+                tokio::runtime::Handle::current().block_on(async {
+                    update_definition_from_source(
+                        &mut conn,
+                        &http_client,
+                        &s3_client,
+                        "def-comp-update",
+                    )
+                    .await
+                });
+            r.map(|_| ())
+        }
+    })
+    .await?;
+
+    delete_handle.await??;
+
+    assert!(
+        update_result.is_err(),
+        "expected update_definition_from_source to fail after DB row was deleted"
+    );
+
+    let list = s3_client
+        .list_objects_v2()
+        .bucket("definitions")
+        .prefix("def-comp-update/")
+        .send()
+        .await?;
+    assert!(
+        list.contents().is_empty(),
+        "S3 object should have been deleted by compensation after DB update failure"
+    );
+
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
+
+    Ok(())
+}
