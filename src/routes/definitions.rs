@@ -24,7 +24,7 @@ pub async fn create_definition(
     let http_client = state.http_client.clone();
     let s3_client = state.s3_client.clone();
     match services::definitions::create_definition(
-        &mut db_pool.get()?,
+        &db_pool,
         &http_client,
         &s3_client,
         &payload,
@@ -45,7 +45,7 @@ pub async fn install_definition(
     let http_client = state.http_client.clone();
     let s3_client = state.s3_client.clone();
     let definition = services::definitions::create_definition_from_registry(
-        &mut db_pool.get()?,
+        &db_pool,
         &http_client,
         &s3_client,
         &request.source,
@@ -62,7 +62,7 @@ pub async fn upgrade_definition(
     let http_client = state.http_client.clone();
     let s3_client = state.s3_client.clone();
     let definition = services::definitions::update_definition_from_source(
-        &mut db_pool.get()?,
+        &db_pool,
         &http_client,
         &s3_client,
         &id,

@@ -113,12 +113,22 @@ fn is_unique_violation(err: &diesel::result::Error) -> bool {
 }
 
 pub async fn create_definition(
-    conn: &mut database::DbConnection,
+    pool: &database::PgPool,
     http_client: &reqwest::Client,
     s3_client: &aws_sdk_s3::Client,
     payload: &DefinitionPayload,
 ) -> Result<models::Definition> {
-    match get_definition(conn, &payload.id) {
+    let definition_id = payload.id.clone();
+    let pool_clone = pool.clone();
+    let existing = tokio::task::spawn_blocking(move || -> Result<QueryResult<models::Definition>> {
+        let mut conn = pool_clone.get().context("Failed to acquire db connection")?;
+        Ok(get_definition(&mut conn, &definition_id))
+    })
+    .await
+    .context("DB existence-check task panicked")?
+    ?;
+
+    match existing {
         Ok(_) => {
             return Err(errors::ServiceError::Conflict(format!(
                 "Definition with ID '{}' already exists",
@@ -170,10 +180,17 @@ pub async fn create_definition(
         source_url: payload.source_url.clone(),
     };
 
-    let insert_result = diesel::insert_into(schema::definitions::table)
-        .values(&new_definition)
-        .returning(models::Definition::as_returning())
-        .get_result(conn);
+    let pool_clone = pool.clone();
+    let insert_result = tokio::task::spawn_blocking(move || -> Result<QueryResult<models::Definition>> {
+        let mut conn = pool_clone.get().context("Failed to acquire db connection")?;
+        Ok(diesel::insert_into(schema::definitions::table)
+            .values(&new_definition)
+            .returning(models::Definition::as_returning())
+            .get_result(&mut conn))
+    })
+    .await
+    .context("DB insert task panicked")?
+    ?;
 
     match insert_result {
         Ok(definition) => Ok(definition),
@@ -192,7 +209,7 @@ pub async fn create_definition(
 }
 
 pub async fn create_definition_from_registry(
-    conn: &mut database::DbConnection,
+    pool: &database::PgPool,
     http_client: &reqwest::Client,
     s3_client: &aws_sdk_s3::Client,
     source_input: &str,
@@ -206,17 +223,26 @@ pub async fn create_definition_from_registry(
         payload.source_url = Some(source_input.to_string());
     }
 
-    create_definition(conn, http_client, s3_client, &payload).await
+    create_definition(pool, http_client, s3_client, &payload).await
 }
 
 pub async fn update_definition_from_source(
-    conn: &mut database::DbConnection,
+    pool: &database::PgPool,
     http_client: &reqwest::Client,
     s3_client: &aws_sdk_s3::Client,
     definition_id: &str,
 ) -> Result<models::Definition> {
-    let definition = get_definition(conn, definition_id)
-        .context("Failed to fetch current definition from database")?;
+    let pool_clone = pool.clone();
+    let definition_id_owned = definition_id.to_string();
+    let definition = tokio::task::spawn_blocking(move || {
+        let mut conn = pool_clone.get().context("Failed to acquire db connection")?;
+        get_definition(&mut conn, &definition_id_owned)
+            .context("Failed to fetch current definition from database")
+    })
+    .await
+    .context("DB fetch task panicked")?
+    ?;
+
     let source_url_str = definition
         .source_url
         .as_ref()
@@ -263,7 +289,17 @@ pub async fn update_definition_from_source(
         ..Default::default()
     };
 
-    match db_update_definition(conn, definition_id, &update_data) {
+    let pool_clone = pool.clone();
+    let definition_id_owned = definition_id.to_string();
+    let db_result = tokio::task::spawn_blocking(move || -> Result<QueryResult<models::Definition>> {
+        let mut conn = pool_clone.get().context("Failed to acquire db connection")?;
+        Ok(db_update_definition(&mut conn, &definition_id_owned, &update_data))
+    })
+    .await
+    .context("DB update task panicked")?
+    ?;
+
+    match db_result {
         Ok(def) => Ok(def),
         Err(err) => {
             let _ = utils::s3::delete_object(s3_client, "definitions", &obj_key).await;

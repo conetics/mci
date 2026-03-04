@@ -15,6 +15,10 @@ use sha2::{Digest, Sha256};
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+fn block_on_runtime<T>(fut: impl std::future::Future<Output = Result<T>>) -> Result<T> {
+    tokio::runtime::Handle::current().block_on(fut)
+}
+
 #[tokio::test]
 async fn create_definition_from_http_source() -> Result<()> {
     let (pg_container, pool) = initialize_pg().await?;
@@ -62,7 +66,6 @@ async fn create_definition_from_http_source() -> Result<()> {
         let meta_url = format!("{}/meta.json", mock.uri());
 
         move || -> Result<Definition> {
-            let mut conn = pool.get()?;
             let payload = DefinitionPayload {
                 id: "def-1".into(),
                 name: "Example Name".into(),
@@ -73,10 +76,7 @@ async fn create_definition_from_http_source() -> Result<()> {
                 source_url: Some(meta_url.clone()),
             };
 
-            let result: Result<Definition> = tokio::runtime::Handle::current().block_on(async {
-                create_definition(&mut conn, &http_client, &s3_client, &payload).await
-            });
-            result
+            block_on_runtime(create_definition(&pool, &http_client, &s3_client, &payload))
         }
     })
     .await??;
@@ -154,7 +154,6 @@ async fn create_definition_conflict_errors() -> Result<()> {
         let http_client = http_client.clone();
 
         move || -> Result<()> {
-            let mut conn = pool.get()?;
             let payload = DefinitionPayload {
                 id: "def-2".into(),
                 name: "Name".into(),
@@ -164,10 +163,7 @@ async fn create_definition_conflict_errors() -> Result<()> {
                 digest: digest_for_task.clone(),
                 source_url: None,
             };
-            let result: Result<Definition> = tokio::runtime::Handle::current().block_on(async {
-                create_definition(&mut conn, &http_client, &s3_client, &payload).await
-            });
-            result.map(|_| ())
+            block_on_runtime(create_definition(&pool, &http_client, &s3_client, &payload)).map(|_| ())
         }
     })
     .await??;
@@ -183,7 +179,6 @@ async fn create_definition_conflict_errors() -> Result<()> {
         let meta_url = meta_url.clone();
 
         move || -> Result<()> {
-            let mut conn = pool.get()?;
             let payload = DefinitionPayload {
                 id: "def-2".into(),
                 name: "Name".into(),
@@ -193,10 +188,7 @@ async fn create_definition_conflict_errors() -> Result<()> {
                 digest: digest_for_task,
                 source_url: Some(meta_url),
             };
-            let result: Result<Definition> = tokio::runtime::Handle::current().block_on(async {
-                create_definition(&mut conn, &http_client, &s3_client, &payload).await
-            });
-            result?;
+            block_on_runtime(create_definition(&pool, &http_client, &s3_client, &payload))?;
             Ok(())
         }
     })
@@ -263,12 +255,7 @@ async fn create_definition_from_registry_sets_source_url() -> Result<()> {
         let registry_url = registry_url.clone();
 
         move || -> Result<Definition> {
-            let mut conn = pool.get()?;
-            let result: Result<Definition> = tokio::runtime::Handle::current().block_on(async {
-                create_definition_from_registry(&mut conn, &http_client, &s3_client, &registry_url)
-                    .await
-            });
-            result
+            block_on_runtime(create_definition_from_registry(&pool, &http_client, &s3_client, &registry_url))
         }
     })
     .await??;
@@ -363,11 +350,7 @@ async fn update_definition_from_source_updates_when_digest_changes() -> Result<(
         let s3_client = s3_client.clone();
 
         move || -> Result<Definition> {
-            let mut conn = pool.get()?;
-            let result: Result<Definition> = tokio::runtime::Handle::current().block_on(async {
-                update_definition_from_source(&mut conn, &http_client, &s3_client, "def-4").await
-            });
-            result
+            block_on_runtime(update_definition_from_source(&pool, &http_client, &s3_client, "def-4"))
         }
     })
     .await??;
@@ -494,18 +477,13 @@ async fn update_definition_from_source_fails_when_source_url_is_none() -> Result
     let result = tokio::task::spawn_blocking({
         let pool = pool.clone();
         move || -> Result<()> {
-            let mut conn = pool.get()?;
-            let r: Result<mci::models::Definition> =
-                tokio::runtime::Handle::current().block_on(async {
-                    update_definition_from_source(
-                        &mut conn,
-                        &http_client,
-                        &dummy_s3,
-                        "no-source-url",
-                    )
-                    .await
-                });
-            r.map(|_| ())
+            block_on_runtime(update_definition_from_source(
+                &pool,
+                &http_client,
+                &dummy_s3,
+                "no-source-url",
+            ))
+            .map(|_| ())
         }
     })
     .await?;
@@ -698,7 +676,6 @@ async fn create_definition_compensates_s3_on_db_unique_violation() -> Result<()>
         let s3_client = s3_client.clone();
 
         move || -> Result<()> {
-            let mut conn = pool.get()?;
             let payload = DefinitionPayload {
                 id: "def-comp-create".into(),
                 name: "Comp Create".into(),
@@ -708,10 +685,7 @@ async fn create_definition_compensates_s3_on_db_unique_violation() -> Result<()>
                 digest: digest_for_task,
                 source_url: None,
             };
-            let r: Result<Definition> = tokio::runtime::Handle::current().block_on(async {
-                create_definition(&mut conn, &http_client, &s3_client, &payload).await
-            });
-            r.map(|_| ())
+            block_on_runtime(create_definition(&pool, &http_client, &s3_client, &payload)).map(|_| ())
         }
     })
     .await?;
@@ -827,18 +801,13 @@ async fn update_definition_from_source_compensates_s3_on_db_failure() -> Result<
         let s3_client = s3_client.clone();
 
         move || -> Result<()> {
-            let mut conn = pool.get()?;
-            let r: Result<mci::models::Definition> =
-                tokio::runtime::Handle::current().block_on(async {
-                    update_definition_from_source(
-                        &mut conn,
-                        &http_client,
-                        &s3_client,
-                        "def-comp-update",
-                    )
-                    .await
-                });
-            r.map(|_| ())
+            block_on_runtime(update_definition_from_source(
+                &pool,
+                &http_client,
+                &s3_client,
+                "def-comp-update",
+            ))
+            .map(|_| ())
         }
     })
     .await?;
