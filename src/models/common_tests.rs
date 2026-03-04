@@ -1,6 +1,5 @@
 use super::*;
 
-#[cfg(test)]
 mod test_validate_digest {
     use super::*;
 
