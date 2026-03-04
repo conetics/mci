@@ -511,6 +511,8 @@ async fn delete_definition_also_deletes_configuration() -> Result<()> {
     let del_resp = delete_request(&app, "/definitions/cfg-def-del").await?;
     assert_eq!(del_resp.status(), StatusCode::NO_CONTENT);
 
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
     let listing = s3_client
         .list_objects_v2()
         .bucket("definition-configurations")
@@ -554,6 +556,9 @@ async fn delete_module_also_deletes_configuration() -> Result<()> {
 
     let del_resp = delete_request(&app, "/modules/cfg-mod-del").await?;
     assert_eq!(del_resp.status(), StatusCode::NO_CONTENT);
+
+    // Cleanup runs in a background task; yield to let it complete.
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     let listing = s3_client
         .list_objects_v2()

@@ -1,4 +1,4 @@
-use crate::routes::common::{handle_delete_cleanup, InstallRequest};
+use crate::routes::common::{spawn_cleanup_task, InstallRequest};
 use crate::services::ResourceKind;
 use crate::{errors, models, services, AppState};
 use axum::{extract, http, routing, Json, Router};
@@ -95,12 +95,10 @@ pub async fn delete_definition(
             id
         )));
     }
-    let config_result =
-        services::configuration::delete_configuration(&s3_client, ResourceKind::Definition, &id)
-            .await;
-    let secrets_result =
-        services::secrets::delete_secrets(&s3_client, ResourceKind::Definition, &id).await;
-    handle_delete_cleanup(&id, "Definition", config_result, secrets_result).await
+    // DB row removed successfully. Delegate S3 cleanup to a background task
+    // so the caller always receives 204 regardless of cleanup outcome.
+    spawn_cleanup_task(s3_client, id, ResourceKind::Definition);
+    Ok(http::StatusCode::NO_CONTENT)
 }
 
 pub async fn update_definition(

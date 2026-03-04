@@ -1,6 +1,5 @@
-use crate::errors::AppError;
-use anyhow::anyhow;
-use axum::http;
+use crate::services::{configuration, secrets, ResourceKind};
+use aws_sdk_s3::Client as S3Client;
 use serde::Deserialize;
 use validator::Validate;
 
@@ -10,43 +9,79 @@ pub struct InstallRequest {
     pub source: String,
 }
 
-pub async fn handle_delete_cleanup(
+/// Logs structured warnings for any S3 cleanup failures that occurred after a
+/// successful DB deletion.  Cleanup is best-effort: this function never signals
+/// failure so that the DB outcome is always authoritative.
+pub fn handle_delete_cleanup(
     id: &str,
-    entity_label: &str,
+    kind: ResourceKind,
     config_result: anyhow::Result<()>,
     secrets_result: anyhow::Result<()>,
-) -> Result<http::StatusCode, AppError> {
-    match (config_result, secrets_result) {
-        (Ok(()), Ok(())) => Ok(http::StatusCode::NO_CONTENT),
-        (Err(e), Ok(())) => Err(anyhow!(
-            "{} '{}' was deleted but its configuration could not be removed from S3: {}. \
-             Orphaned configuration objects may remain in the '{}/' prefix.",
-            entity_label,
+) {
+    if let Err(e) = config_result {
+        tracing::warn!(
+            id = %id,
+            kind = ?kind,
+            error = %e,
+            "Best-effort configuration cleanup failed after deletion; \
+             orphaned S3 objects may remain under the '{}/{}/' prefix",
+            kind.config_bucket(),
             id,
-            e,
-            id
-        )
-        .into()),
-        (Ok(()), Err(e)) => Err(anyhow!(
-            "{} '{}' was deleted but its secrets could not be removed from S3: {}. \
-             Orphaned secrets objects may remain in the '{}/' prefix.",
-            entity_label,
-            id,
-            e,
-            id
-        )
-        .into()),
-        (Err(config_err), Err(secrets_err)) => Err(anyhow!(
-            "{} '{}' was deleted but S3 cleanup failed for both configuration ({}) and \
-                 secrets ({}). Orphaned objects may remain in the '{}/' prefix.",
-            entity_label,
-            id,
-            config_err,
-            secrets_err,
-            id
-        )
-        .into()),
+        );
     }
+    if let Err(e) = secrets_result {
+        tracing::warn!(
+            id = %id,
+            kind = ?kind,
+            error = %e,
+            "Best-effort secrets cleanup failed after deletion; \
+             orphaned S3 objects may remain under the '{}/{}/' prefix",
+            kind.secrets_bucket(),
+            id,
+        );
+    }
+}
+
+/// Spawns a background task that performs best-effort S3 cleanup after a
+/// successful DB deletion.  Each cleanup operation is attempted once; on
+/// failure a single retry is issued and a structured `WARN`-level log is
+/// emitted for every failed attempt so that log-aggregation pipelines can
+/// trigger compensating workflows or alert on persistent orphaned objects.
+///
+/// The caller always receives control back immediately; the DB deletion result
+/// is never reverted regardless of cleanup outcome.
+pub fn spawn_cleanup_task(s3: S3Client, id: String, kind: ResourceKind) {
+    tokio::spawn(async move {
+        let config_result = configuration::delete_configuration(&s3, kind, &id).await;
+        let config_result = if let Err(ref e) = config_result {
+            tracing::warn!(
+                id = %id,
+                kind = ?kind,
+                error = %e,
+                attempt = 1u32,
+                "Best-effort configuration cleanup failed; scheduling retry",
+            );
+            configuration::delete_configuration(&s3, kind, &id).await
+        } else {
+            config_result
+        };
+
+        let secrets_result = secrets::delete_secrets(&s3, kind, &id).await;
+        let secrets_result = if let Err(ref e) = secrets_result {
+            tracing::warn!(
+                id = %id,
+                kind = ?kind,
+                error = %e,
+                attempt = 1u32,
+                "Best-effort secrets cleanup failed; scheduling retry",
+            );
+            secrets::delete_secrets(&s3, kind, &id).await
+        } else {
+            secrets_result
+        };
+
+        handle_delete_cleanup(&id, kind, config_result, secrets_result);
+    });
 }
 
 #[cfg(test)]
