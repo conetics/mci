@@ -467,12 +467,7 @@ async fn list_modules_filters_and_sorting() -> Result<()> {
                 &mut conn,
                 &ModuleFilter {
                     query: Some("amm".into()),
-                    is_enabled: None,
-                    r#type: None,
-                    limit: None,
-                    offset: None,
-                    sort_by: None,
-                    sort_order: None,
+                    ..Default::default()
                 },
             )
             .map_err(Into::into)
