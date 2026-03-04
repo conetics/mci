@@ -15,6 +15,10 @@ use sha2::{Digest, Sha256};
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+fn block_on_runtime<T>(fut: impl std::future::Future<Output = Result<T>>) -> Result<T> {
+    tokio::runtime::Handle::current().block_on(fut)
+}
+
 #[tokio::test]
 async fn create_module_from_http_source() -> Result<()> {
     let (pg_container, pool) = initialize_pg().await?;
@@ -66,10 +70,7 @@ async fn create_module_from_http_source() -> Result<()> {
                 source_url: Some(meta_url.clone()),
             };
 
-            let result: Result<Module> = tokio::runtime::Handle::current().block_on(async {
-                create_module(&pool, &http_client, &s3_client, &payload).await
-            });
-            result
+            block_on_runtime(create_module(&pool, &http_client, &s3_client, &payload))
         }
     })
     .await??;
@@ -147,10 +148,7 @@ async fn create_module_conflict_errors() -> Result<()> {
                 digest: digest_for_task.clone(),
                 source_url: None,
             };
-            let result: Result<Module> = tokio::runtime::Handle::current().block_on(async {
-                create_module(&pool, &http_client, &s3_client, &payload).await
-            });
-            result.map(|_| ())
+            block_on_runtime(create_module(&pool, &http_client, &s3_client, &payload)).map(|_| ())
         }
     })
     .await??;
@@ -175,10 +173,7 @@ async fn create_module_conflict_errors() -> Result<()> {
                 digest: digest_for_task,
                 source_url: Some(meta_url),
             };
-            let result: Result<Module> = tokio::runtime::Handle::current().block_on(async {
-                create_module(&pool, &http_client, &s3_client, &payload).await
-            });
-            result?;
+            block_on_runtime(create_module(&pool, &http_client, &s3_client, &payload))?;
             Ok(())
         }
     })
@@ -237,11 +232,7 @@ async fn create_module_from_registry_sets_source_url() -> Result<()> {
         let registry_url = registry_url.clone();
 
         move || -> Result<Module> {
-            let result: Result<Module> = tokio::runtime::Handle::current().block_on(async {
-                create_module_from_registry(&pool, &http_client, &s3_client, &registry_url)
-                    .await
-            });
-            result
+            block_on_runtime(create_module_from_registry(&pool, &http_client, &s3_client, &registry_url))
         }
     })
     .await??;
@@ -327,10 +318,7 @@ async fn update_module_from_source_updates_when_digest_changes() -> Result<()> {
         let s3_client = s3_client.clone();
 
         move || -> Result<Module> {
-            let result: Result<Module> = tokio::runtime::Handle::current().block_on(async {
-                update_module_from_source(&pool, &http_client, &s3_client, "mod-4").await
-            });
-            result
+            block_on_runtime(update_module_from_source(&pool, &http_client, &s3_client, "mod-4"))
         }
     })
     .await??;
