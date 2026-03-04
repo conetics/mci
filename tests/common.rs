@@ -75,6 +75,7 @@ pub async fn setup_app() -> Result<(
         key_path: None,
         cert_path: None,
         database_url: "postgres://localhost:5432/postgres".into(),
+        db_pool_size: 10,
         s3_url: "http://localhost:9000".into(),
         s3_region: "us-east-1".into(),
         s3_access_key: "minioadmin".into(),
