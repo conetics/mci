@@ -107,11 +107,17 @@ pub async fn create_definition(
     s3_client: &aws_sdk_s3::Client,
     payload: &DefinitionPayload,
 ) -> Result<models::Definition> {
-    if get_definition(conn, &payload.id).is_ok() {
-        anyhow::bail!(
-            "Conflict: Definition with ID '{}' already exists",
-            payload.id
-        );
+    match get_definition(conn, &payload.id) {
+        Ok(_) => {
+            return Err(crate::errors::AppError::conflict(format!(
+                "Definition with ID '{}' already exists",
+                payload.id
+            )).into());
+        }
+        Err(diesel::result::Error::NotFound) => {}
+        Err(err) => {
+            return Err(anyhow::Error::new(err)).context("Failed to check existing definition");
+        }
     }
 
     let definition_url = utils::source::Source::parse(&payload.file_url)?;
