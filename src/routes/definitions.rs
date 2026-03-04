@@ -32,14 +32,7 @@ pub async fn create_definition(
     .await
     {
         Ok(definition) => Ok((http::StatusCode::CREATED, Json(definition))),
-        Err(e) => {
-            let msg = e.to_string();
-            if msg.contains("Conflict: Definition with ID") {
-                Err(errors::AppError::Conflict(msg))
-            } else {
-                Err(errors::AppError::Internal(e))
-            }
-        }
+        Err(e) => Err(errors::AppError::from_service_error(e)),
     }
 }
 

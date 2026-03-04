@@ -9,6 +9,9 @@ pub enum ServiceError {
     #[error("{0}")]
     InvalidChanges(String),
 
+    #[error("Conflict: {0}")]
+    Conflict(String),
+
     #[error("Not found: {0}")]
     NotFound(String),
 
@@ -183,6 +186,7 @@ impl AppError {
 
     pub fn from_service_error(err: anyhow::Error) -> Self {
         match err.downcast::<ServiceError>() {
+            Ok(ServiceError::Conflict(msg)) => AppError::Conflict(msg),
             Ok(ServiceError::NotFound(msg)) => AppError::NotFound(msg),
             Ok(service_err) => AppError::BadRequest(service_err.to_string()),
             Err(other) => AppError::Internal(other),

@@ -1,6 +1,6 @@
 use crate::services::common::{fetch_payload, Filter, Payload};
 pub use crate::services::common::{SortBy, SortOrder};
-use crate::{database, models, schema, utils};
+use crate::{database, errors, models, schema, utils};
 use anyhow::{Context, Result};
 use aws_sdk_s3;
 use aws_smithy_types::byte_stream;
@@ -109,7 +109,7 @@ pub async fn create_definition(
 ) -> Result<models::Definition> {
     match get_definition(conn, &payload.id) {
         Ok(_) => {
-            return Err(crate::errors::AppError::conflict(format!(
+            return Err(errors::ServiceError::Conflict(format!(
                 "Definition with ID '{}' already exists",
                 payload.id
             ))

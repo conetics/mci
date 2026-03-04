@@ -331,6 +331,20 @@ fn test_internal_display() {
 }
 
 #[test]
+fn test_from_service_error_conflict_maps_to_conflict() {
+    let err: anyhow::Error =
+        ServiceError::Conflict("Definition with ID 'foo' already exists".into()).into();
+    let app_error = AppError::from_service_error(err);
+
+    match app_error {
+        AppError::Conflict(msg) => {
+            assert!(msg.contains("Definition with ID 'foo' already exists"));
+        }
+        _ => panic!("Expected Conflict variant, got {:?}", app_error),
+    }
+}
+
+#[test]
 fn test_from_service_error_invalid_changes_maps_to_bad_request() {
     let err: anyhow::Error =
         ServiceError::InvalidChanges("Configuration changes are invalid".into()).into();
