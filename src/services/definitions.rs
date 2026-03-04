@@ -214,7 +214,7 @@ pub async fn update_definition_from_source(
     let source_url_str = definition
         .source_url
         .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("Definition does not have a source_url to update from"))?;
+        .ok_or_else(|| errors::AppError::bad_request("source_url is required to update from source"))?;
     let source = utils::source::Source::parse(source_url_str)?;
     let remote_payload = fetch_definition(http_client, &source)
         .await

@@ -511,9 +511,13 @@ async fn update_definition_from_source_fails_when_source_url_is_none() -> Result
     .await?;
 
     assert!(result.is_err(), "expected error when source_url is None");
+    let app_err = result
+        .unwrap_err()
+        .downcast::<mci::errors::AppError>()
+        .expect("expected AppError");
     assert!(
-        result.unwrap_err().to_string().contains("source_url"),
-        "error message should mention source_url"
+        matches!(&app_err, mci::errors::AppError::BadRequest(msg) if msg.contains("source_url")),
+        "expected AppError::BadRequest mentioning 'source_url', got: {app_err:?}"
     );
 
     pg_container.stop().await.ok();
