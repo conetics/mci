@@ -8,6 +8,7 @@ pub struct Config {
     pub key_path: Option<String>,
     pub cert_path: Option<String>,
     pub database_url: String,
+    pub db_pool_size: u32,
     pub s3_url: String,
     pub s3_region: String,
     pub s3_access_key: String,
@@ -26,6 +27,7 @@ impl Config {
         let s = builder
             .set_default("log_level", "info")?
             .set_default("address", "0.0.0.0:7687")?
+            .set_default("db_pool_size", 10)?
             .set_default("s3_region", "us-east-1")?
             .set_default("s3_access_key", "none")?
             .set_default("s3_secret_key", "none")?
