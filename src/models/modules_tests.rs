@@ -51,42 +51,60 @@ fn new_module_valid_passes_validation() {
 #[test]
 fn new_module_id_too_short_rejected() {
     use validator::Validate;
-    let m = NewModule { id: "ab".into(), ..valid_new_module() };
+    let m = NewModule {
+        id: "ab".into(),
+        ..valid_new_module()
+    };
     assert!(m.validate().is_err());
 }
 
 #[test]
 fn new_module_id_too_long_rejected() {
     use validator::Validate;
-    let m = NewModule { id: "a".repeat(65), ..valid_new_module() };
+    let m = NewModule {
+        id: "a".repeat(65),
+        ..valid_new_module()
+    };
     assert!(m.validate().is_err());
 }
 
 #[test]
 fn new_module_id_rejects_invalid_chars() {
     use validator::Validate;
-    let m = NewModule { id: "bad@module".into(), ..valid_new_module() };
+    let m = NewModule {
+        id: "bad@module".into(),
+        ..valid_new_module()
+    };
     assert!(m.validate().is_err());
 }
 
 #[test]
 fn new_module_name_too_short_rejected() {
     use validator::Validate;
-    let m = NewModule { name: "ab".into(), ..valid_new_module() };
+    let m = NewModule {
+        name: "ab".into(),
+        ..valid_new_module()
+    };
     assert!(m.validate().is_err());
 }
 
 #[test]
 fn new_module_description_too_long_rejected() {
     use validator::Validate;
-    let m = NewModule { description: "a".repeat(501), ..valid_new_module() };
+    let m = NewModule {
+        description: "a".repeat(501),
+        ..valid_new_module()
+    };
     assert!(m.validate().is_err());
 }
 
 #[test]
 fn new_module_invalid_digest_rejected() {
     use validator::Validate;
-    let m = NewModule { digest: "not-a-digest".into(), ..valid_new_module() };
+    let m = NewModule {
+        digest: "not-a-digest".into(),
+        ..valid_new_module()
+    };
     assert!(m.validate().is_err());
 }
 

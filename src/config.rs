@@ -35,4 +35,3 @@ impl Config {
         s.try_deserialize()
     }
 }
-

@@ -2,9 +2,9 @@ mod common;
 
 use anyhow::Result;
 use aws_smithy_types::byte_stream::ByteStream;
+use common::initialize_s3;
 use mci::utils;
 use uuid::Uuid;
-use common::initialize_s3;
 
 #[tokio::test]
 async fn delete_objects_with_prefix_removes_objects() -> Result<()> {

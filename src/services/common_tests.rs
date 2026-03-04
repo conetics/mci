@@ -6,17 +6,26 @@ mod test_resource_kind {
 
     #[test]
     fn definition_config_bucket() {
-        assert_eq!(ResourceKind::Definition.config_bucket(), "definition-configurations");
+        assert_eq!(
+            ResourceKind::Definition.config_bucket(),
+            "definition-configurations"
+        );
     }
 
     #[test]
     fn module_config_bucket() {
-        assert_eq!(ResourceKind::Module.config_bucket(), "module-configurations");
+        assert_eq!(
+            ResourceKind::Module.config_bucket(),
+            "module-configurations"
+        );
     }
 
     #[test]
     fn definition_secrets_bucket() {
-        assert_eq!(ResourceKind::Definition.secrets_bucket(), "definition-secrets");
+        assert_eq!(
+            ResourceKind::Definition.secrets_bucket(),
+            "definition-secrets"
+        );
     }
 
     #[test]
@@ -196,7 +205,10 @@ mod test_fetch_payload {
     }
 
     fn test_payload() -> TestPayload {
-        TestPayload { id: "abc".into(), value: 42 }
+        TestPayload {
+            id: "abc".into(),
+            value: 42,
+        }
     }
 
     fn http_client() -> reqwest::Client {

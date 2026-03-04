@@ -28,7 +28,9 @@ pub async fn create_definition(
         &http_client,
         &s3_client,
         &payload,
-    ).await {
+    )
+    .await
+    {
         Ok(definition) => Ok((http::StatusCode::CREATED, Json(definition))),
         Err(e) => {
             let msg = e.to_string();
@@ -100,18 +102,11 @@ pub async fn delete_definition(
             id
         )));
     }
-    let config_result = services::configuration::delete_configuration(
-        &s3_client,
-        ResourceKind::Definition,
-        &id,
-    )
-    .await;
-    let secrets_result = services::secrets::delete_secrets(
-        &s3_client,
-        ResourceKind::Definition,
-        &id,
-    )
-    .await;
+    let config_result =
+        services::configuration::delete_configuration(&s3_client, ResourceKind::Definition, &id)
+            .await;
+    let secrets_result =
+        services::secrets::delete_secrets(&s3_client, ResourceKind::Definition, &id).await;
     handle_delete_cleanup(&id, "Definition", config_result, secrets_result).await
 }
 
@@ -135,8 +130,11 @@ pub fn create_route_v1() -> Router<AppState> {
         .route("/definitions", routing::get(list_definitions))
         .route("/definitions", routing::post(create_definition))
         .route("/definitions/install", routing::post(install_definition))
-    .route("/definitions/{id}", routing::get(get_definition))
-    .route("/definitions/{id}", routing::patch(update_definition))
-    .route("/definitions/{id}", routing::delete(delete_definition))
-    .route("/definitions/{id}/update", routing::post(upgrade_definition))
+        .route("/definitions/{id}", routing::get(get_definition))
+        .route("/definitions/{id}", routing::patch(update_definition))
+        .route("/definitions/{id}", routing::delete(delete_definition))
+        .route(
+            "/definitions/{id}/update",
+            routing::post(upgrade_definition),
+        )
 }

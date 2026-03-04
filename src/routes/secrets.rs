@@ -7,12 +7,8 @@ pub async fn get_definition_secrets_schema(
     extract::State(state): extract::State<AppState>,
     extract::Path(id): extract::Path<String>,
 ) -> Result<Json<models::secrets::SecretsSchema>, errors::AppError> {
-    let schema = services::secrets::get_schema(
-        &state.s3_client,
-        ResourceKind::Definition,
-        &id,
-    )
-    .await?;
+    let schema =
+        services::secrets::get_schema(&state.s3_client, ResourceKind::Definition, &id).await?;
     Ok(Json(models::secrets::SecretsSchema::new(schema)))
 }
 
@@ -39,12 +35,7 @@ pub async fn get_module_secrets_schema(
     extract::State(state): extract::State<AppState>,
     extract::Path(id): extract::Path<String>,
 ) -> Result<Json<models::secrets::SecretsSchema>, errors::AppError> {
-    let schema = services::secrets::get_schema(
-        &state.s3_client,
-        ResourceKind::Module,
-        &id,
-    )
-    .await?;
+    let schema = services::secrets::get_schema(&state.s3_client, ResourceKind::Module, &id).await?;
     Ok(Json(models::secrets::SecretsSchema::new(schema)))
 }
 
@@ -81,5 +72,8 @@ pub fn create_route_v1() -> Router<AppState> {
             "/modules/{id}/secrets/schema",
             routing::get(get_module_secrets_schema),
         )
-        .route("/modules/{id}/secrets", routing::patch(patch_module_secrets))
+        .route(
+            "/modules/{id}/secrets",
+            routing::patch(patch_module_secrets),
+        )
 }

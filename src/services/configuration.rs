@@ -7,11 +7,7 @@ pub fn validate_configuration(schema: &JsonValue, configuration: &JsonValue) -> 
     validate_schema(schema, configuration)
 }
 
-pub async fn get_schema(
-    s3_client: &Client,
-    target: ResourceKind,
-    id: &str,
-) -> Result<JsonValue> {
+pub async fn get_schema(s3_client: &Client, target: ResourceKind, id: &str) -> Result<JsonValue> {
     let response = s3_client
         .get_object()
         .bucket(target.config_bucket())

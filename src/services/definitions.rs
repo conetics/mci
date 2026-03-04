@@ -112,7 +112,8 @@ pub async fn create_definition(
             return Err(crate::errors::AppError::conflict(format!(
                 "Definition with ID '{}' already exists",
                 payload.id
-            )).into());
+            ))
+            .into());
         }
         Err(diesel::result::Error::NotFound) => {}
         Err(err) => {

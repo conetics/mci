@@ -5,13 +5,13 @@ use axum::{
     body::Body,
     http::{self, Request, StatusCode},
 };
+use common::{read_body, setup_app};
 use mci::models::{Module, ModuleType};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use tower::ServiceExt;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
-use common::{read_body, setup_app};
 
 #[tokio::test]
 async fn get_modules_returns_empty_list() -> Result<()> {
@@ -392,7 +392,12 @@ async fn create_test_module(
         )
         .await?;
 
-    assert_eq!(resp.status(), StatusCode::CREATED, "setup POST failed for {}", id);
+    assert_eq!(
+        resp.status(),
+        StatusCode::CREATED,
+        "setup POST failed for {}",
+        id
+    );
 
     Ok(())
 }
@@ -422,7 +427,9 @@ async fn list_modules_filter_by_type() -> Result<()> {
     let results: Vec<Module> = serde_json::from_slice(&body)?;
 
     assert_eq!(results.len(), 2);
-    assert!(results.iter().all(|m| matches!(m.type_, ModuleType::Language)));
+    assert!(results
+        .iter()
+        .all(|m| matches!(m.type_, ModuleType::Language)));
 
     pg_container.stop().await.ok();
     s3_container.stop().await.ok();

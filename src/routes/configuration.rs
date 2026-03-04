@@ -1,18 +1,15 @@
+use crate::services::ResourceKind;
+use crate::{errors, models, services, AppState};
 use axum::{extract, http, routing, Json, Router};
 use serde_json::Value as JsonValue;
-use crate::{errors, models, services, AppState};
-use crate::services::ResourceKind;
 
 pub async fn get_definition_configuration_schema(
     extract::State(state): extract::State<AppState>,
     extract::Path(id): extract::Path<String>,
 ) -> Result<Json<JsonValue>, errors::AppError> {
-    let schema = services::configuration::get_schema(
-        &state.s3_client,
-        ResourceKind::Definition,
-        &id,
-    )
-    .await?;
+    let schema =
+        services::configuration::get_schema(&state.s3_client, ResourceKind::Definition, &id)
+            .await?;
     Ok(Json(schema))
 }
 
@@ -20,20 +17,16 @@ pub async fn get_definition_configuration(
     extract::State(state): extract::State<AppState>,
     extract::Path(id): extract::Path<String>,
 ) -> Result<Json<models::configuration::ConfigurationDocument>, errors::AppError> {
-    let config = services::configuration::get_configuration(
-        &state.s3_client,
-        ResourceKind::Definition,
-        &id,
-    )
-    .await?;
-    let schema = services::configuration::get_schema(
-        &state.s3_client,
-        ResourceKind::Definition,
-        &id,
-    )
-    .await?;
+    let config =
+        services::configuration::get_configuration(&state.s3_client, ResourceKind::Definition, &id)
+            .await?;
+    let schema =
+        services::configuration::get_schema(&state.s3_client, ResourceKind::Definition, &id)
+            .await?;
     let validation = services::configuration::validate_configuration(&schema, &config)?;
-    Ok(Json(models::configuration::ConfigurationDocument::new(config, validation)))
+    Ok(Json(models::configuration::ConfigurationDocument::new(
+        config, validation,
+    )))
 }
 
 pub async fn put_definition_configuration(
@@ -74,12 +67,8 @@ pub async fn get_module_configuration_schema(
     extract::State(state): extract::State<AppState>,
     extract::Path(id): extract::Path<String>,
 ) -> Result<Json<JsonValue>, errors::AppError> {
-    let schema = services::configuration::get_schema(
-        &state.s3_client,
-        ResourceKind::Module,
-        &id,
-    )
-    .await?;
+    let schema =
+        services::configuration::get_schema(&state.s3_client, ResourceKind::Module, &id).await?;
     Ok(Json(schema))
 }
 
@@ -87,20 +76,15 @@ pub async fn get_module_configuration(
     extract::State(state): extract::State<AppState>,
     extract::Path(id): extract::Path<String>,
 ) -> Result<Json<models::configuration::ConfigurationDocument>, errors::AppError> {
-    let config = services::configuration::get_configuration(
-        &state.s3_client,
-        ResourceKind::Module,
-        &id,
-    )
-    .await?;
-    let schema = services::configuration::get_schema(
-        &state.s3_client,
-        ResourceKind::Module,
-        &id,
-    )
-    .await?;
+    let config =
+        services::configuration::get_configuration(&state.s3_client, ResourceKind::Module, &id)
+            .await?;
+    let schema =
+        services::configuration::get_schema(&state.s3_client, ResourceKind::Module, &id).await?;
     let validation = services::configuration::validate_configuration(&schema, &config)?;
-    Ok(Json(models::configuration::ConfigurationDocument::new(config, validation)))
+    Ok(Json(models::configuration::ConfigurationDocument::new(
+        config, validation,
+    )))
 }
 
 pub async fn put_module_configuration(
@@ -108,14 +92,9 @@ pub async fn put_module_configuration(
     extract::Path(id): extract::Path<String>,
     Json(body): Json<JsonValue>,
 ) -> Result<http::StatusCode, errors::AppError> {
-    services::configuration::put_configuration(
-        &state.s3_client,
-        ResourceKind::Module,
-        &id,
-        &body,
-    )
-    .await
-    .map_err(errors::AppError::from_service_error)?;
+    services::configuration::put_configuration(&state.s3_client, ResourceKind::Module, &id, &body)
+        .await
+        .map_err(errors::AppError::from_service_error)?;
     Ok(http::StatusCode::NO_CONTENT)
 }
 
@@ -159,8 +138,14 @@ pub fn create_route_v1() -> Router<AppState> {
             "/modules/{id}/configuration/schema",
             routing::get(get_module_configuration_schema),
         )
-        .route("/modules/{id}/configuration", routing::get(get_module_configuration))
-        .route("/modules/{id}/configuration", routing::put(put_module_configuration))
+        .route(
+            "/modules/{id}/configuration",
+            routing::get(get_module_configuration),
+        )
+        .route(
+            "/modules/{id}/configuration",
+            routing::put(put_module_configuration),
+        )
         .route(
             "/modules/{id}/configuration",
             routing::patch(patch_module_configuration),

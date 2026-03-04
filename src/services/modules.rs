@@ -112,11 +112,15 @@ pub async fn create_module(
             return Err(crate::errors::AppError::conflict(format!(
                 "Module with ID '{}' already exists",
                 payload.id
-            )).into());
+            ))
+            .into());
         }
         Err(diesel::result::Error::NotFound) => {}
         Err(err) => {
-            return Err(crate::errors::AppError::internal(anyhow::Error::from(err).context("Failed to check existing module")).into());
+            return Err(crate::errors::AppError::internal(
+                anyhow::Error::from(err).context("Failed to check existing module"),
+            )
+            .into());
         }
     }
 

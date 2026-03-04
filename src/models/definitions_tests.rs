@@ -64,56 +64,80 @@ fn new_definition_valid_passes_validation() {
 #[test]
 fn new_definition_id_too_short_rejected() {
     use validator::Validate;
-    let d = NewDefinition { id: "ab".into(), ..valid_new_definition() };
+    let d = NewDefinition {
+        id: "ab".into(),
+        ..valid_new_definition()
+    };
     assert!(d.validate().is_err());
 }
 
 #[test]
 fn new_definition_id_too_long_rejected() {
     use validator::Validate;
-    let d = NewDefinition { id: "a".repeat(65), ..valid_new_definition() };
+    let d = NewDefinition {
+        id: "a".repeat(65),
+        ..valid_new_definition()
+    };
     assert!(d.validate().is_err());
 }
 
 #[test]
 fn new_definition_id_rejects_invalid_chars() {
     use validator::Validate;
-    let d = NewDefinition { id: "bad@id".into(), ..valid_new_definition() };
+    let d = NewDefinition {
+        id: "bad@id".into(),
+        ..valid_new_definition()
+    };
     assert!(d.validate().is_err());
 }
 
 #[test]
 fn new_definition_id_accepts_dots_and_dashes() {
     use validator::Validate;
-    let d = NewDefinition { id: "my.def-id".into(), ..valid_new_definition() };
+    let d = NewDefinition {
+        id: "my.def-id".into(),
+        ..valid_new_definition()
+    };
     assert!(d.validate().is_ok());
 }
 
 #[test]
 fn new_definition_type_rejects_dots() {
     use validator::Validate;
-    let d = NewDefinition { type_: "api.type".into(), ..valid_new_definition() };
+    let d = NewDefinition {
+        type_: "api.type".into(),
+        ..valid_new_definition()
+    };
     assert!(d.validate().is_err());
 }
 
 #[test]
 fn new_definition_name_too_short_rejected() {
     use validator::Validate;
-    let d = NewDefinition { name: "ab".into(), ..valid_new_definition() };
+    let d = NewDefinition {
+        name: "ab".into(),
+        ..valid_new_definition()
+    };
     assert!(d.validate().is_err());
 }
 
 #[test]
 fn new_definition_description_too_long_rejected() {
     use validator::Validate;
-    let d = NewDefinition { description: "a".repeat(501), ..valid_new_definition() };
+    let d = NewDefinition {
+        description: "a".repeat(501),
+        ..valid_new_definition()
+    };
     assert!(d.validate().is_err());
 }
 
 #[test]
 fn new_definition_invalid_digest_rejected() {
     use validator::Validate;
-    let d = NewDefinition { digest: "not-a-valid-digest".into(), ..valid_new_definition() };
+    let d = NewDefinition {
+        digest: "not-a-valid-digest".into(),
+        ..valid_new_definition()
+    };
     assert!(d.validate().is_err());
 }
 

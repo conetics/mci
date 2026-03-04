@@ -21,23 +21,31 @@ pub async fn handle_delete_cleanup(
         (Err(e), Ok(())) => Err(anyhow!(
             "{} '{}' was deleted but its configuration could not be removed from S3: {}. \
              Orphaned configuration objects may remain in the '{}/' prefix.",
-            entity_label, id, e, id
+            entity_label,
+            id,
+            e,
+            id
         )
         .into()),
         (Ok(()), Err(e)) => Err(anyhow!(
             "{} '{}' was deleted but its secrets could not be removed from S3: {}. \
              Orphaned secrets objects may remain in the '{}/' prefix.",
-            entity_label, id, e, id
+            entity_label,
+            id,
+            e,
+            id
         )
         .into()),
-        (Err(config_err), Err(secrets_err)) => {
-            Err(anyhow!(
-                "{} '{}' was deleted but S3 cleanup failed for both configuration ({}) and \
+        (Err(config_err), Err(secrets_err)) => Err(anyhow!(
+            "{} '{}' was deleted but S3 cleanup failed for both configuration ({}) and \
                  secrets ({}). Orphaned objects may remain in the '{}/' prefix.",
-                entity_label, id, config_err, secrets_err, id
-            )
-            .into())
-        }
+            entity_label,
+            id,
+            config_err,
+            secrets_err,
+            id
+        )
+        .into()),
     }
 }
 

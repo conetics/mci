@@ -87,11 +87,7 @@ mod tests {
     async fn both_err_messages_include_both_original_errors() {
         let config_err_msg = "config s3 error";
         let secrets_err_msg = "secrets s3 error";
-        let result = run(
-            Err(anyhow!(config_err_msg)),
-            Err(anyhow!(secrets_err_msg)),
-        )
-        .await;
+        let result = run(Err(anyhow!(config_err_msg)), Err(anyhow!(secrets_err_msg))).await;
         let msg = result.unwrap_err().to_string();
         assert!(msg.contains(config_err_msg));
         assert!(msg.contains(secrets_err_msg));

@@ -2,9 +2,9 @@ mod common;
 
 use anyhow::Result;
 use aws_smithy_types::byte_stream::ByteStream;
+use common::initialize_s3;
 use mci::services::{configuration, ResourceKind};
 use serde_json::json;
-use common::initialize_s3;
 
 async fn create_configuration_buckets(client: &aws_sdk_s3::Client) -> Result<()> {
     client
@@ -53,11 +53,9 @@ async fn get_schema_and_configuration_reads_from_target_bucket() -> Result<()> {
         .send()
         .await?;
 
-    let loaded_schema =
-        configuration::get_schema(&client, ResourceKind::Definition, id).await?;
+    let loaded_schema = configuration::get_schema(&client, ResourceKind::Definition, id).await?;
     let loaded_config =
-        configuration::get_configuration(&client, ResourceKind::Definition, id)
-            .await?;
+        configuration::get_configuration(&client, ResourceKind::Definition, id).await?;
 
     assert_eq!(loaded_schema, schema);
     assert_eq!(loaded_config, config);
@@ -95,11 +93,9 @@ async fn put_configuration_validates_and_persists() -> Result<()> {
         "enabled": true
     });
 
-    configuration::put_configuration(&client, ResourceKind::Module, id, &config)
-        .await?;
+    configuration::put_configuration(&client, ResourceKind::Module, id, &config).await?;
 
-    let loaded =
-        configuration::get_configuration(&client, ResourceKind::Module, id).await?;
+    let loaded = configuration::get_configuration(&client, ResourceKind::Module, id).await?;
     assert_eq!(loaded, config);
 
     container.stop().await.ok();
@@ -135,18 +131,12 @@ async fn put_configuration_rejects_invalid_input() -> Result<()> {
         "enabled": "yes"
     });
 
-    let result = configuration::put_configuration(
-        &client,
-        ResourceKind::Module,
-        id,
-        &invalid_config,
-    )
-    .await;
+    let result =
+        configuration::put_configuration(&client, ResourceKind::Module, id, &invalid_config).await;
 
     assert!(result.is_err());
 
-    let loaded =
-        configuration::get_configuration(&client, ResourceKind::Module, id).await;
+    let loaded = configuration::get_configuration(&client, ResourceKind::Module, id).await;
     assert!(loaded.is_err(), "invalid config should not be stored");
 
     container.stop().await.ok();
@@ -183,8 +173,7 @@ async fn delete_configuration_cleans_entire_prefix() -> Result<()> {
         .send()
         .await?;
 
-    configuration::delete_configuration(&client, ResourceKind::Definition, id)
-        .await?;
+    configuration::delete_configuration(&client, ResourceKind::Definition, id).await?;
 
     let deleted_prefix_listing = client
         .list_objects_v2()

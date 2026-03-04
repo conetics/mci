@@ -5,13 +5,13 @@ use axum::{
     body::Body,
     http::{self, Request, StatusCode},
 };
+use common::{read_body, setup_app};
 use mci::models::Definition;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use tower::ServiceExt;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
-use common::{read_body, setup_app};
 
 #[tokio::test]
 async fn get_definitions_returns_empty_list() -> Result<()> {
@@ -391,7 +391,12 @@ async fn create_test_definition(
         )
         .await?;
 
-    assert_eq!(resp.status(), StatusCode::CREATED, "setup POST failed for {}", id);
+    assert_eq!(
+        resp.status(),
+        StatusCode::CREATED,
+        "setup POST failed for {}",
+        id
+    );
 
     Ok(())
 }

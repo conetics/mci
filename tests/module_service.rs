@@ -1,6 +1,7 @@
 mod common;
 
 use anyhow::Result;
+use common::{initialize_pg, initialize_s3};
 use diesel::prelude::*;
 use mci::{
     models::{Module, ModuleType, NewModule},
@@ -13,7 +14,6 @@ use mci::{
 use sha2::{Digest, Sha256};
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
-use common::{initialize_pg, initialize_s3};
 
 #[tokio::test]
 async fn create_module_from_http_source() -> Result<()> {

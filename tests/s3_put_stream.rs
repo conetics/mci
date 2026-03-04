@@ -2,10 +2,10 @@ mod common;
 
 use anyhow::{Context, Result};
 use aws_smithy_types::byte_stream;
+use common::initialize_s3;
 use mci::utils;
 use sha2::Digest;
 use uuid::Uuid;
-use common::initialize_s3;
 
 #[tokio::test]
 async fn put_stream_uploads_object() -> Result<()> {

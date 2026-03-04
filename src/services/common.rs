@@ -103,7 +103,6 @@ where
     }
 }
 
-
 #[cfg(test)]
 #[path = "common_tests.rs"]
 mod tests;

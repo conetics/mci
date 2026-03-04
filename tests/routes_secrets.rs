@@ -6,10 +6,10 @@ use axum::{
     body::Body,
     http::{self, Request, StatusCode},
 };
+use common::{read_body, setup_app};
 use serde_json::{json, Value as JsonValue};
 use sha2::{Digest, Sha256};
 use tower::ServiceExt;
-use common::{read_body, setup_app};
 
 #[tokio::test]
 async fn get_definition_secrets_schema_returns_schema() -> Result<()> {

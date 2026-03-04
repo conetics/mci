@@ -1,6 +1,7 @@
 mod common;
 
 use anyhow::Result;
+use common::{initialize_pg, initialize_s3};
 use diesel::prelude::*;
 use mci::{
     models::{Definition, NewDefinition},
@@ -13,7 +14,6 @@ use mci::{
 use sha2::{Digest, Sha256};
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
-use common::{initialize_pg, initialize_s3};
 
 #[tokio::test]
 async fn create_definition_from_http_source() -> Result<()> {
@@ -73,10 +73,9 @@ async fn create_definition_from_http_source() -> Result<()> {
                 source_url: Some(meta_url.clone()),
             };
 
-            let result: Result<Definition> =
-                tokio::runtime::Handle::current().block_on(async {
-                    create_definition(&mut conn, &http_client, &s3_client, &payload).await
-                });
+            let result: Result<Definition> = tokio::runtime::Handle::current().block_on(async {
+                create_definition(&mut conn, &http_client, &s3_client, &payload).await
+            });
             result
         }
     })
@@ -165,10 +164,9 @@ async fn create_definition_conflict_errors() -> Result<()> {
                 digest: digest_for_task.clone(),
                 source_url: None,
             };
-            let result: Result<Definition> =
-                tokio::runtime::Handle::current().block_on(async {
-                    create_definition(&mut conn, &http_client, &s3_client, &payload).await
-                });
+            let result: Result<Definition> = tokio::runtime::Handle::current().block_on(async {
+                create_definition(&mut conn, &http_client, &s3_client, &payload).await
+            });
             result.map(|_| ())
         }
     })
@@ -195,10 +193,9 @@ async fn create_definition_conflict_errors() -> Result<()> {
                 digest: digest_for_task,
                 source_url: Some(meta_url),
             };
-            let result: Result<Definition> =
-                tokio::runtime::Handle::current().block_on(async {
-                    create_definition(&mut conn, &http_client, &s3_client, &payload).await
-                });
+            let result: Result<Definition> = tokio::runtime::Handle::current().block_on(async {
+                create_definition(&mut conn, &http_client, &s3_client, &payload).await
+            });
             result?;
             Ok(())
         }
@@ -267,16 +264,10 @@ async fn create_definition_from_registry_sets_source_url() -> Result<()> {
 
         move || -> Result<Definition> {
             let mut conn = pool.get()?;
-            let result: Result<Definition> =
-                tokio::runtime::Handle::current().block_on(async {
-                    create_definition_from_registry(
-                        &mut conn,
-                        &http_client,
-                        &s3_client,
-                        &registry_url,
-                    )
+            let result: Result<Definition> = tokio::runtime::Handle::current().block_on(async {
+                create_definition_from_registry(&mut conn, &http_client, &s3_client, &registry_url)
                     .await
-                });
+            });
             result
         }
     })
@@ -373,11 +364,9 @@ async fn update_definition_from_source_updates_when_digest_changes() -> Result<(
 
         move || -> Result<Definition> {
             let mut conn = pool.get()?;
-            let result: Result<Definition> =
-                tokio::runtime::Handle::current().block_on(async {
-                    update_definition_from_source(&mut conn, &http_client, &s3_client, "def-4")
-                        .await
-                });
+            let result: Result<Definition> = tokio::runtime::Handle::current().block_on(async {
+                update_definition_from_source(&mut conn, &http_client, &s3_client, "def-4").await
+            });
             result
         }
     })
@@ -488,7 +477,9 @@ async fn update_definition_from_source_fails_when_source_url_is_none() -> Result
                     type_: "test-type".into(),
                     name: "No Source".into(),
                     description: "Has no source_url".into(),
-                    digest: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".into(),
+                    digest:
+                        "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                            .into(),
                     source_url: None,
                 })
                 .execute(&mut conn)?;
@@ -521,10 +512,7 @@ async fn update_definition_from_source_fails_when_source_url_is_none() -> Result
 
     assert!(result.is_err(), "expected error when source_url is None");
     assert!(
-        result
-            .unwrap_err()
-            .to_string()
-            .contains("source_url"),
+        result.unwrap_err().to_string().contains("source_url"),
         "error message should mention source_url"
     );
 
