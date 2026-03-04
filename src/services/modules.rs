@@ -167,7 +167,7 @@ pub async fn create_module(
     };
 
     let pool_clone = pool.clone();
-    tokio::task::spawn_blocking(move || {
+    let db_result = tokio::task::spawn_blocking(move || {
         let mut conn = pool_clone.get().context("Failed to acquire db connection")?;
         diesel::insert_into(schema::modules::table)
             .values(&new_module)
@@ -176,7 +176,15 @@ pub async fn create_module(
             .context("Failed to save module to database")
     })
     .await
-    .context("DB insert task panicked")?
+    .context("DB insert task panicked")?;
+
+    match db_result {
+        Ok(module) => Ok(module),
+        Err(db_err) => {
+            let _ = utils::s3::delete_object(s3_client, "modules", &obj_key).await;
+            Err(db_err)
+        }
+    }
 }
 
 pub async fn create_module_from_registry(
@@ -262,11 +270,19 @@ pub async fn update_module_from_source(
 
     let pool_clone = pool.clone();
     let module_id_owned = module_id.to_string();
-    tokio::task::spawn_blocking(move || {
+    let db_result = tokio::task::spawn_blocking(move || {
         let mut conn = pool_clone.get().context("Failed to acquire db connection")?;
         db_update_module(&mut conn, &module_id_owned, &update_data)
             .context("Failed to update module in database")
     })
     .await
-    .context("DB update task panicked")?
+    .context("DB update task panicked")?;
+
+    match db_result {
+        Ok(module) => Ok(module),
+        Err(db_err) => {
+            let _ = utils::s3::delete_object(s3_client, "modules", &obj_key).await;
+            Err(db_err)
+        }
+    }
 }
