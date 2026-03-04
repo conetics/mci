@@ -101,6 +101,13 @@ pub fn list_modules(
     query.select(models::Module::as_select()).load(conn)
 }
 
+fn is_unique_violation(err: &diesel::result::Error) -> bool {
+    matches!(
+        err,
+        diesel::result::Error::DatabaseError(diesel::result::DatabaseErrorKind::UniqueViolation, _)
+    )
+}
+
 pub async fn create_module(
     pool: &database::PgPool,
     http_client: &reqwest::Client,
@@ -167,22 +174,30 @@ pub async fn create_module(
     };
 
     let pool_clone = pool.clone();
-    let db_result = tokio::task::spawn_blocking(move || {
+    let insert_result = tokio::task::spawn_blocking(move || -> Result<QueryResult<models::Module>> {
         let mut conn = pool_clone.get().context("Failed to acquire db connection")?;
-        diesel::insert_into(schema::modules::table)
+        Ok(diesel::insert_into(schema::modules::table)
             .values(&new_module)
             .returning(models::Module::as_returning())
-            .get_result(&mut conn)
-            .context("Failed to save module to database")
+            .get_result(&mut conn))
     })
     .await
-    .context("DB insert task panicked")?;
+    .context("DB insert task panicked")?
+    ?;
 
-    match db_result {
+    match insert_result {
         Ok(module) => Ok(module),
-        Err(db_err) => {
+        Err(err) if is_unique_violation(&err) => {
             let _ = utils::s3::delete_object(s3_client, "modules", &obj_key).await;
-            Err(db_err)
+            Err(crate::errors::AppError::conflict(format!(
+                "Module with ID '{}' already exists",
+                payload.id
+            ))
+            .into())
+        }
+        Err(err) => {
+            let _ = utils::s3::delete_object(s3_client, "modules", &obj_key).await;
+            Err(anyhow::Error::new(err)).context("Failed to save module to database")
         }
     }
 }
