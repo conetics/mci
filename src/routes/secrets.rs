@@ -70,16 +70,16 @@ pub async fn patch_module_secrets(
 pub fn create_route_v1() -> Router<AppState> {
     Router::new()
         .route(
-            "/definitions/:id/secrets/schema",
+            "/definitions/{id}/secrets/schema",
             routing::get(get_definition_secrets_schema),
         )
         .route(
-            "/definitions/:id/secrets",
+            "/definitions/{id}/secrets",
             routing::patch(patch_definition_secrets),
         )
         .route(
-            "/modules/:id/secrets/schema",
+            "/modules/{id}/secrets/schema",
             routing::get(get_module_secrets_schema),
         )
-        .route("/modules/:id/secrets", routing::patch(patch_module_secrets))
+        .route("/modules/{id}/secrets", routing::patch(patch_module_secrets))
 }

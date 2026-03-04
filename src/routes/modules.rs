@@ -121,8 +121,8 @@ pub fn create_route_v1() -> Router<AppState> {
         .route("/modules", routing::get(list_modules))
         .route("/modules", routing::post(create_module))
         .route("/modules/install", routing::post(install_module))
-        .route("/modules/:id", routing::get(get_module))
-        .route("/modules/:id", routing::patch(update_module))
-        .route("/modules/:id", routing::delete(delete_module))
-        .route("/modules/:id/update", routing::post(upgrade_module))
+    .route("/modules/{id}", routing::get(get_module))
+    .route("/modules/{id}", routing::patch(update_module))
+    .route("/modules/{id}", routing::delete(delete_module))
+    .route("/modules/{id}/update", routing::post(upgrade_module))
 }

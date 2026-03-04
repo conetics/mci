@@ -8,12 +8,13 @@ pub mod modules;
 pub mod secrets;
 
 pub fn all_routes() -> Router<AppState> {
-    Router::new().nest(
-        "/v1",
-        Router::new()
-            .merge(definitions::create_route_v1())
-            .merge(modules::create_route_v1())
-            .merge(configuration::create_route_v1())
-            .merge(secrets::create_route_v1()),
-    )
+    let v1_routes = Router::new()
+        .merge(definitions::create_route_v1())
+        .merge(modules::create_route_v1())
+        .merge(configuration::create_route_v1())
+        .merge(secrets::create_route_v1());
+
+    Router::new()
+        .merge(v1_routes.clone())
+        .nest("/v1", v1_routes)
 }

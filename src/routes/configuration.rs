@@ -6,14 +6,14 @@ use crate::services::ResourceKind;
 pub async fn get_definition_configuration_schema(
     extract::State(state): extract::State<AppState>,
     extract::Path(id): extract::Path<String>,
-) -> Result<Json<models::configuration::ConfigurationSchema>, errors::AppError> {
+) -> Result<Json<JsonValue>, errors::AppError> {
     let schema = services::configuration::get_schema(
         &state.s3_client,
         ResourceKind::Definition,
         &id,
     )
     .await?;
-    Ok(Json(models::configuration::ConfigurationSchema::new(schema)))
+    Ok(Json(schema))
 }
 
 pub async fn get_definition_configuration(
@@ -73,14 +73,14 @@ pub async fn patch_definition_configuration(
 pub async fn get_module_configuration_schema(
     extract::State(state): extract::State<AppState>,
     extract::Path(id): extract::Path<String>,
-) -> Result<Json<models::configuration::ConfigurationSchema>, errors::AppError> {
+) -> Result<Json<JsonValue>, errors::AppError> {
     let schema = services::configuration::get_schema(
         &state.s3_client,
         ResourceKind::Module,
         &id,
     )
     .await?;
-    Ok(Json(models::configuration::ConfigurationSchema::new(schema)))
+    Ok(Json(schema))
 }
 
 pub async fn get_module_configuration(
@@ -140,29 +140,29 @@ pub async fn patch_module_configuration(
 pub fn create_route_v1() -> Router<AppState> {
     Router::new()
         .route(
-            "/definitions/:id/configuration/schema",
+            "/definitions/{id}/configuration/schema",
             routing::get(get_definition_configuration_schema),
         )
         .route(
-            "/definitions/:id/configuration",
+            "/definitions/{id}/configuration",
             routing::get(get_definition_configuration),
         )
         .route(
-            "/definitions/:id/configuration",
+            "/definitions/{id}/configuration",
             routing::put(put_definition_configuration),
         )
         .route(
-            "/definitions/:id/configuration",
+            "/definitions/{id}/configuration",
             routing::patch(patch_definition_configuration),
         )
         .route(
-            "/modules/:id/configuration/schema",
+            "/modules/{id}/configuration/schema",
             routing::get(get_module_configuration_schema),
         )
-        .route("/modules/:id/configuration", routing::get(get_module_configuration))
-        .route("/modules/:id/configuration", routing::put(put_module_configuration))
+        .route("/modules/{id}/configuration", routing::get(get_module_configuration))
+        .route("/modules/{id}/configuration", routing::put(put_module_configuration))
         .route(
-            "/modules/:id/configuration",
+            "/modules/{id}/configuration",
             routing::patch(patch_module_configuration),
         )
 }
