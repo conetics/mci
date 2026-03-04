@@ -8,23 +8,25 @@ pub async fn delete_objects_with_prefix(
     bucket: &str,
     prefix: &str,
 ) -> Result<()> {
-    let objects = s3_client
+    let mut paginator = s3_client
         .list_objects_v2()
         .bucket(bucket)
         .prefix(prefix)
-        .send()
-        .await
-        .context("Failed to list objects for deletion in S3")?;
+        .into_paginator()
+        .send();
 
-    for obj in objects.contents() {
-        if let Some(key) = obj.key() {
-            s3_client
-                .delete_object()
-                .bucket(bucket)
-                .key(key)
-                .send()
-                .await
-                .context(format!("Failed to delete S3 object: {}", key))?;
+    while let Some(page) = paginator.next().await {
+        let page = page.context("Failed to list objects for deletion in S3")?;
+        for obj in page.contents() {
+            if let Some(key) = obj.key() {
+                s3_client
+                    .delete_object()
+                    .bucket(bucket)
+                    .key(key)
+                    .send()
+                    .await
+                    .context(format!("Failed to delete S3 object: {}", key))?;
+            }
         }
     }
     Ok(())
