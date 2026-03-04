@@ -1,14 +1,21 @@
 use anyhow::Result;
-use axum::response::Response;
-use axum::Router;
+use aws_smithy_types::byte_stream::ByteStream;
+use axum::{
+    body::Body,
+    http::{self, Request},
+    response::Response,
+    Router,
+};
 use bytes::Bytes;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use http_body_util::BodyExt as _;
 use mci::{config, database, router, s3, AppState};
+use serde_json::Value as JsonValue;
 use testcontainers_modules::{
     minio, postgres,
     testcontainers::{runners::AsyncRunner, ContainerAsync},
 };
+use tower::ServiceExt as _;
 
 #[allow(dead_code)]
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
@@ -107,4 +114,143 @@ pub async fn setup_app() -> Result<(
 pub async fn read_body(response: Response) -> Result<Bytes> {
     let collected = response.into_body().collect().await?;
     Ok(collected.to_bytes())
+}
+
+#[allow(dead_code)]
+pub async fn seed_s3(
+    s3_client: &aws_sdk_s3::Client,
+    bucket: &str,
+    key: &str,
+    body: Vec<u8>,
+) -> Result<()> {
+    s3_client
+        .put_object()
+        .bucket(bucket)
+        .key(key)
+        .body(ByteStream::from(body))
+        .send()
+        .await?;
+    Ok(())
+}
+
+#[allow(dead_code)]
+pub async fn seed_schema(
+    s3_client: &aws_sdk_s3::Client,
+    bucket: &str,
+    key_prefix: &str,
+    schema: &JsonValue,
+) -> Result<()> {
+    seed_s3(
+        s3_client,
+        bucket,
+        &format!("{key_prefix}/configuration.schema.json"),
+        serde_json::to_vec(schema)?,
+    )
+    .await
+}
+
+#[allow(dead_code)]
+pub async fn seed_config(
+    s3_client: &aws_sdk_s3::Client,
+    bucket: &str,
+    key_prefix: &str,
+    config: &JsonValue,
+) -> Result<()> {
+    seed_s3(
+        s3_client,
+        bucket,
+        &format!("{key_prefix}/configuration.json"),
+        serde_json::to_vec(config)?,
+    )
+    .await
+}
+
+#[allow(dead_code)]
+pub async fn seed_raw(
+    s3_client: &aws_sdk_s3::Client,
+    bucket: &str,
+    key: &str,
+    bytes: &'static [u8],
+) -> Result<()> {
+    s3_client
+        .put_object()
+        .bucket(bucket)
+        .key(key)
+        .body(ByteStream::from_static(bytes))
+        .send()
+        .await?;
+    Ok(())
+}
+
+#[allow(dead_code)]
+pub async fn get_request(app: &Router, uri: &str) -> Result<Response> {
+    Ok(app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(uri)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await?)
+}
+
+#[allow(dead_code)]
+pub async fn post_request(app: &Router, uri: &str, body: &JsonValue) -> Result<Response> {
+    Ok(app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(uri)
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(body)?))
+                .unwrap(),
+        )
+        .await?)
+}
+
+#[allow(dead_code)]
+pub async fn put_request(app: &Router, uri: &str, body: &JsonValue) -> Result<Response> {
+    Ok(app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(uri)
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(body)?))
+                .unwrap(),
+        )
+        .await?)
+}
+
+#[allow(dead_code)]
+pub async fn patch_request(app: &Router, uri: &str, body: &JsonValue) -> Result<Response> {
+    Ok(app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(uri)
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(body)?))
+                .unwrap(),
+        )
+        .await?)
+}
+
+#[allow(dead_code)]
+pub async fn delete_request(app: &Router, uri: &str) -> Result<Response> {
+    Ok(app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(uri)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await?)
 }
