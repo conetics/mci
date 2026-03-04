@@ -70,3 +70,13 @@ fn test_http_url_with_port() {
         Source::Http("http://localhost:8080/example.json".to_string())
     );
 }
+
+#[test]
+fn test_single_slash_scheme_routed_to_parse_url() {
+    let result = Source::parse("ftp:/example.com/example.json");
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        errors::AppError::UnsupportedScheme(scheme) => assert_eq!(scheme, "ftp"),
+        e => panic!("expected UnsupportedScheme, got {e:?}"),
+    }
+}

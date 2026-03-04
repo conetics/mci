@@ -11,10 +11,26 @@ pub enum Source {
 
 impl Source {
     pub fn parse(input: &str) -> Result<Self, errors::AppError> {
-        if input.contains("://") {
+        if Self::has_uri_scheme(input) {
             return Self::parse_url(input);
         }
         Self::parse_file_path(input)
+    }
+
+    fn has_uri_scheme(input: &str) -> bool {
+        let Some(colon_pos) = input.find(':') else {
+            return false;
+        };
+        let scheme = &input[..colon_pos];
+        if scheme.contains('/') {
+            return false;
+        }
+        let mut chars = scheme.chars();
+        let Some(first) = chars.next() else {
+            return false;
+        };
+        first.is_ascii_alphabetic()
+            && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
     }
 
     fn parse_url(input: &str) -> Result<Self, errors::AppError> {
