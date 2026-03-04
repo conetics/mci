@@ -5,7 +5,7 @@ use tracing::info;
 async fn main() {
     let config = config::Config::from_env().expect("Failed to load configuration from environment");
 
-    mci::telemetry::init(&config.log_level);
+    let _ = mci::telemetry::init(&config.log_level);
 
     let handle = axum_server::Handle::new();
     let shutdown_handle = handle.clone();
