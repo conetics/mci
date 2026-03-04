@@ -105,6 +105,13 @@ pub fn list_definitions(
     query.select(models::Definition::as_select()).load(conn)
 }
 
+fn is_unique_violation(err: &diesel::result::Error) -> bool {
+    matches!(
+        err,
+        diesel::result::Error::DatabaseError(diesel::result::DatabaseErrorKind::UniqueViolation, _)
+    )
+}
+
 pub async fn create_definition(
     conn: &mut database::DbConnection,
     http_client: &reqwest::Client,
@@ -163,11 +170,19 @@ pub async fn create_definition(
         source_url: payload.source_url.clone(),
     };
 
-    diesel::insert_into(schema::definitions::table)
+    let insert_result = diesel::insert_into(schema::definitions::table)
         .values(&new_definition)
         .returning(models::Definition::as_returning())
-        .get_result(conn)
-        .context("Failed to save definition to database")
+        .get_result(conn);
+
+    match insert_result {
+        Ok(definition) => Ok(definition),
+        Err(err) if is_unique_violation(&err) => Err(crate::errors::AppError::conflict(
+            format!("Definition with ID '{}' already exists", payload.id),
+        )
+        .into()),
+        Err(err) => Err(anyhow::Error::new(err)).context("Failed to save definition to database"),
+    }
 }
 
 pub async fn create_definition_from_registry(
