@@ -191,7 +191,6 @@ mod test_fetch_payload {
     use super::*;
     use crate::utils::source::Source;
     use serde::{Deserialize, Serialize};
-    use std::path::PathBuf;
     use tokio::fs;
     use wiremock::{
         matchers::{header, method, path},
@@ -286,7 +285,8 @@ mod test_fetch_payload {
 
     #[tokio::test]
     async fn file_missing_returns_err() {
-        let source = Source::File(PathBuf::from("/nonexistent/path/payload.json"));
+        let dir = tempfile::tempdir().unwrap();
+        let source = Source::File(dir.path().join("payload.json"));
         let result: anyhow::Result<TestPayload> =
             fetch_payload(&http_client(), &source, "test").await;
 
