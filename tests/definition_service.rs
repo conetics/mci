@@ -647,7 +647,7 @@ async fn create_definition_compensates_s3_on_db_unique_violation() -> Result<()>
 
     let race_handle = tokio::spawn({
         let pool = pool.clone();
-        let digest = digest_str.clone();
+        let digest_val = digest_str.clone();
         async move {
             tokio::time::sleep(std::time::Duration::from_millis(30)).await;
             tokio::task::spawn_blocking(move || -> Result<()> {
@@ -658,7 +658,7 @@ async fn create_definition_compensates_s3_on_db_unique_violation() -> Result<()>
                         type_: "comp-type".into(),
                         name: "Comp Create".into(),
                         description: "comp desc".into(),
-                        digest,
+                        digest: digest_val,
                         source_url: None,
                     })
                     .execute(&mut conn)?;
