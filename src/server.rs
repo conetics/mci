@@ -8,7 +8,7 @@ pub async fn serve(
     config: &config::Config,
     handle: Handle<net::SocketAddr>,
 ) -> Result<(impl Future<Output = Result<(), io::Error>>, net::SocketAddr), Box<dyn error::Error>> {
-    let db_pool = database::create_pool(&config.database_url, config.db_pool_size);
+    let db_pool = database::create_pool(&config.database_url, config.db_pool_size)?;
     let http_client = http::create_client(30)?;
     let s3_client = s3::create_client(
         &config.s3_url,
