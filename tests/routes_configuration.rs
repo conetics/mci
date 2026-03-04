@@ -920,5 +920,105 @@ async fn delete_module_also_deletes_configuration() -> Result<()> {
 
     pg_container.stop().await.ok();
     s3_container.stop().await.ok();
+
+    Ok(())
+}
+#[tokio::test]
+async fn definition_configuration_patch_propagates_corrupt_config_error() -> Result<()> {
+    let (pg_container, s3_container, app, s3_client) = setup_app().await?;
+
+    let schema = json!({
+        "type": "object",
+        "properties": { "enabled": { "type": "boolean" } },
+        "additionalProperties": false
+    });
+
+    s3_client
+        .put_object()
+        .bucket("definition-configurations")
+        .key("cfg-def-patch-corrupt/configuration.schema.json")
+        .body(ByteStream::from(serde_json::to_vec(&schema)?))
+        .send()
+        .await?;
+
+    s3_client
+        .put_object()
+        .bucket("definition-configurations")
+        .key("cfg-def-patch-corrupt/configuration.json")
+        .body(ByteStream::from_static(b"this is not json {{{"))
+        .send()
+        .await?;
+
+    let patch_ops = json!([
+        { "op": "add", "path": "/enabled", "value": true }
+    ]);
+
+    let patch_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri("/definitions/cfg-def-patch-corrupt/configuration")
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&patch_ops)?))
+                .unwrap(),
+        )
+        .await?;
+
+    assert_eq!(patch_resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn module_configuration_patch_propagates_corrupt_config_error() -> Result<()> {
+    let (pg_container, s3_container, app, s3_client) = setup_app().await?;
+
+    let schema = json!({
+        "type": "object",
+        "properties": { "port": { "type": "integer" } },
+        "additionalProperties": false
+    });
+
+    s3_client
+        .put_object()
+        .bucket("module-configurations")
+        .key("cfg-mod-patch-corrupt/configuration.schema.json")
+        .body(ByteStream::from(serde_json::to_vec(&schema)?))
+        .send()
+        .await?;
+
+    s3_client
+        .put_object()
+        .bucket("module-configurations")
+        .key("cfg-mod-patch-corrupt/configuration.json")
+        .body(ByteStream::from_static(b"this is not json {{{"))
+        .send()
+        .await?;
+
+    let patch_ops = json!([
+        { "op": "add", "path": "/port", "value": 9090 }
+    ]);
+
+    let patch_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri("/modules/cfg-mod-patch-corrupt/configuration")
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&patch_ops)?))
+                .unwrap(),
+        )
+        .await?;
+
+    assert_eq!(patch_resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+    pg_container.stop().await.ok();
+    s3_container.stop().await.ok();
+
     Ok(())
 }

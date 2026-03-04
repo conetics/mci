@@ -30,13 +30,22 @@ pub async fn get_configuration(
     target: ResourceKind,
     id: &str,
 ) -> Result<JsonValue> {
-    let response = s3_client
+    let send_result = s3_client
         .get_object()
         .bucket(target.config_bucket())
         .key(format!("{}/configuration.json", id))
         .send()
-        .await
-        .context("Failed to get configuration from S3")?;
+        .await;
+    let response = match send_result {
+        Ok(r) => r,
+        Err(e) if e.as_service_error().map(|se| se.is_no_such_key()).unwrap_or(false) => {
+            return Err(crate::errors::ServiceError::NotFound(
+                format!("Configuration not found for '{}'", id),
+            )
+            .into());
+        }
+        Err(e) => return Err(e).context("Failed to get configuration from S3"),
+    };
     let bytes = response
         .body
         .collect()
@@ -90,7 +99,16 @@ pub async fn patch_configuration(
 ) -> Result<JsonValue> {
     let current = match get_configuration(s3_client, target, id).await {
         Ok(config) => config,
-        Err(_) => serde_json::json!({}),
+        Err(e) => {
+            if e.downcast_ref::<crate::errors::ServiceError>()
+                .map(|se| matches!(se, crate::errors::ServiceError::NotFound(_)))
+                .unwrap_or(false)
+            {
+                serde_json::json!({})
+            } else {
+                return Err(e);
+            }
+        }
     };
     let patched = crate::utils::json::apply_patch(&current, operations)
         .map_err(|e| crate::errors::ServiceError::PatchFailed { source: e })?;
