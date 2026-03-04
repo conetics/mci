@@ -23,14 +23,22 @@ pub async fn create_definition(
     let db_pool = state.db_pool.clone();
     let http_client = state.http_client.clone();
     let s3_client = state.s3_client.clone();
-    let definition = services::definitions::create_definition(
+    match services::definitions::create_definition(
         &mut db_pool.get()?,
         &http_client,
         &s3_client,
         &payload,
-    )
-    .await?;
-    Ok((http::StatusCode::CREATED, Json(definition)))
+    ).await {
+        Ok(definition) => Ok((http::StatusCode::CREATED, Json(definition))),
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("Conflict: Definition with ID") {
+                Err(errors::AppError::Conflict(msg))
+            } else {
+                Err(errors::AppError::Internal(e))
+            }
+        }
+    }
 }
 
 pub async fn install_definition(
