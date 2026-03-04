@@ -69,14 +69,22 @@ pub async fn setup_app() -> Result<(
         s3_client.create_bucket().bucket(bucket).send().await?;
     }
 
+    let pg_host = pg_container.get_host().await?;
+    let pg_port = pg_container.get_host_port_ipv4(5432).await?;
+    let database_url = format!("postgres://postgres:postgres@{pg_host}:{pg_port}/postgres");
+
+    let s3_host = s3_container.get_host().await?;
+    let s3_port = s3_container.get_host_port_ipv4(9000).await?;
+    let s3_url = format!("http://{s3_host}:{s3_port}");
+
     let config = config::Config {
         log_level: "info".into(),
         address: "127.0.0.1:0".into(),
         key_path: None,
         cert_path: None,
-        database_url: "postgres://localhost:5432/postgres".into(),
+        database_url,
         db_pool_size: 10,
-        s3_url: "http://localhost:9000".into(),
+        s3_url,
         s3_region: "us-east-1".into(),
         s3_access_key: "minioadmin".into(),
         s3_secret_key: "minioadmin".into(),
