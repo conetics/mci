@@ -96,6 +96,7 @@ pub async fn setup_app() -> Result<(
         s3_access_key: "minioadmin".into(),
         s3_secret_key: "minioadmin".into(),
         s3_kms_key_id: None,
+        allowed_origins: None,
     };
 
     let state = AppState {
