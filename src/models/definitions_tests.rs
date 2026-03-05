@@ -160,3 +160,148 @@ fn new_definition_valid_source_url_passes() {
     };
     assert!(d.validate().is_ok());
 }
+
+#[test]
+fn update_definition_request_allows_all_none() {
+    let req = UpdateDefinitionRequest {
+        is_enabled: None,
+        type_: None,
+        name: None,
+        description: None,
+        source_url: None,
+    };
+    assert!(req.validate().is_ok());
+}
+
+#[test]
+fn update_definition_request_type_too_short_rejected() {
+    use validator::Validate;
+    let req = UpdateDefinitionRequest {
+        type_: Some("ab".into()),
+        is_enabled: None,
+        name: None,
+        description: None,
+        source_url: None,
+    };
+    assert!(req.validate().is_err());
+}
+
+#[test]
+fn update_definition_request_name_too_short_rejected() {
+    use validator::Validate;
+    let req = UpdateDefinitionRequest {
+        name: Some("ab".into()),
+        is_enabled: None,
+        type_: None,
+        description: None,
+        source_url: None,
+    };
+    assert!(req.validate().is_err());
+}
+
+#[test]
+fn update_definition_request_description_too_long_rejected() {
+    use validator::Validate;
+    let req = UpdateDefinitionRequest {
+        description: Some("a".repeat(501)),
+        is_enabled: None,
+        type_: None,
+        name: None,
+        source_url: None,
+    };
+    assert!(req.validate().is_err());
+}
+
+#[test]
+fn update_definition_request_invalid_source_url_rejected() {
+    use validator::Validate;
+    let req = UpdateDefinitionRequest {
+        source_url: Some("not-a-url".into()),
+        is_enabled: None,
+        type_: None,
+        name: None,
+        description: None,
+    };
+    assert!(req.validate().is_err());
+}
+
+#[test]
+fn update_definition_allows_setting_enabled() {
+    let update = UpdateDefinition {
+        is_enabled: Some(false),
+        ..Default::default()
+    };
+    assert_eq!(update.is_enabled, Some(false));
+}
+
+#[test]
+fn new_definition_type_accepts_valid_identifier() {
+    use validator::Validate;
+    let d = NewDefinition {
+        type_: "valid-type".into(),
+        ..valid_new_definition()
+    };
+    assert!(d.validate().is_ok());
+}
+
+#[test]
+fn new_definition_id_accepts_namespace_format() {
+    use validator::Validate;
+    let d = NewDefinition {
+        id: "namespace.sub.item".into(),
+        ..valid_new_definition()
+    };
+    assert!(d.validate().is_ok());
+}
+
+#[test]
+fn new_definition_description_can_be_empty() {
+    use validator::Validate;
+    let d = NewDefinition {
+        description: "".into(),
+        ..valid_new_definition()
+    };
+    assert!(d.validate().is_ok());
+}
+
+#[test]
+fn new_definition_source_url_none_is_valid() {
+    use validator::Validate;
+    let d = NewDefinition {
+        source_url: None,
+        ..valid_new_definition()
+    };
+    assert!(d.validate().is_ok());
+}
+
+#[test]
+fn definition_has_all_required_fields() {
+    let def = Definition {
+        id: "test-id".into(),
+        type_: "test-type".into(),
+        is_enabled: true,
+        name: "Test Name".into(),
+        description: "Test Description".into(),
+        digest: "sha256:abc123".into(),
+        source_url: Some("https://example.com".into()),
+    };
+    assert_eq!(def.id, "test-id");
+    assert_eq!(def.type_, "test-type");
+    assert!(def.is_enabled);
+}
+
+#[test]
+fn update_definition_request_from_trait() {
+    let req = UpdateDefinitionRequest {
+        is_enabled: Some(true),
+        type_: Some("new-type".to_string()),
+        name: Some("New Name".to_string()),
+        description: Some("New Description".to_string()),
+        source_url: Some("https://example.com".to_string()),
+    };
+    let update: UpdateDefinition = req.into();
+    assert_eq!(update.is_enabled, Some(true));
+    assert_eq!(update.type_, Some("new-type".to_string()));
+    assert_eq!(update.name, Some("New Name".to_string()));
+    assert_eq!(update.digest, None);
+}

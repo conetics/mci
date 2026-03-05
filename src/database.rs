@@ -8,3 +8,7 @@ pub fn create_pool(database_url: &str, pool_size: u32) -> Result<PgPool, r2d2::P
 
     r2d2::Pool::builder().max_size(pool_size).build(manager)
 }
+
+#[cfg(test)]
+#[path = "database_tests.rs"]
+mod tests;

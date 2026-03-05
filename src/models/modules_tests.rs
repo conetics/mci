@@ -120,3 +120,208 @@ fn new_module_valid_source_url_passes() {
     };
     assert!(m.validate().is_ok());
 }
+
+#[test]
+fn module_type_serializes_to_lowercase() {
+    assert_eq!(
+        serde_json::to_string(&ModuleType::Language).unwrap(),
+        "\"language\""
+    );
+    assert_eq!(
+        serde_json::to_string(&ModuleType::Sandbox).unwrap(),
+        "\"sandbox\""
+    );
+    assert_eq!(
+        serde_json::to_string(&ModuleType::Interceptor).unwrap(),
+        "\"interceptor\""
+    );
+    assert_eq!(
+        serde_json::to_string(&ModuleType::Proxy).unwrap(),
+        "\"proxy\""
+    );
+    assert_eq!(
+        serde_json::to_string(&ModuleType::Hook).unwrap(),
+        "\"hook\""
+    );
+}
+
+#[test]
+fn module_type_deserializes_from_lowercase() {
+    assert_eq!(
+        serde_json::from_str::<ModuleType>("\"language\"").unwrap(),
+        ModuleType::Language
+    );
+    assert_eq!(
+        serde_json::from_str::<ModuleType>("\"sandbox\"").unwrap(),
+        ModuleType::Sandbox
+    );
+    assert_eq!(
+        serde_json::from_str::<ModuleType>("\"interceptor\"").unwrap(),
+        ModuleType::Interceptor
+    );
+    assert_eq!(
+        serde_json::from_str::<ModuleType>("\"proxy\"").unwrap(),
+        ModuleType::Proxy
+    );
+    assert_eq!(
+        serde_json::from_str::<ModuleType>("\"hook\"").unwrap(),
+        ModuleType::Hook
+    );
+}
+
+#[test]
+fn module_type_deserialize_rejects_uppercase() {
+    let result = serde_json::from_str::<ModuleType>("\"Language\"");
+    assert!(result.is_err());
+}
+
+#[test]
+fn module_type_clone_and_copy() {
+    let t1 = ModuleType::Language;
+    let t2 = t1;
+    let t3 = t1.clone();
+    assert_eq!(t1, t2);
+    assert_eq!(t1, t3);
+}
+
+#[test]
+fn module_type_debug() {
+    let debug_str = format!("{:?}", ModuleType::Language);
+    assert!(debug_str.contains("Language"));
+}
+
+#[test]
+fn update_module_request_allows_all_none() {
+    let req = UpdateModuleRequest {
+        is_enabled: None,
+        name: None,
+        description: None,
+        source_url: None,
+    };
+    assert!(req.validate().is_ok());
+}
+
+#[test]
+fn update_module_request_name_too_short_rejected() {
+    use validator::Validate;
+    let req = UpdateModuleRequest {
+        name: Some("ab".into()),
+        is_enabled: None,
+        description: None,
+        source_url: None,
+    };
+    assert!(req.validate().is_err());
+}
+
+#[test]
+fn update_module_request_description_too_long_rejected() {
+    use validator::Validate;
+    let req = UpdateModuleRequest {
+        description: Some("a".repeat(501)),
+        is_enabled: None,
+        name: None,
+        source_url: None,
+    };
+    assert!(req.validate().is_err());
+}
+
+#[test]
+fn update_module_request_invalid_source_url_rejected() {
+    use validator::Validate;
+    let req = UpdateModuleRequest {
+        source_url: Some("not-a-url".into()),
+        is_enabled: None,
+        name: None,
+        description: None,
+    };
+    assert!(req.validate().is_err());
+}
+
+#[test]
+fn update_module_allows_setting_enabled() {
+    let update = UpdateModule {
+        is_enabled: Some(false),
+        ..Default::default()
+    };
+    assert_eq!(update.is_enabled, Some(false));
+}
+
+#[test]
+fn new_module_id_accepts_namespace_format() {
+    use validator::Validate;
+    let m = NewModule {
+        id: "namespace.sub.item".into(),
+        ..valid_new_module()
+    };
+    assert!(m.validate().is_ok());
+}
+
+#[test]
+fn new_module_description_can_be_empty() {
+    use validator::Validate;
+    let m = NewModule {
+        description: "".into(),
+        ..valid_new_module()
+    };
+    assert!(m.validate().is_ok());
+}
+
+#[test]
+fn new_module_source_url_none_is_valid() {
+    use validator::Validate;
+    let m = NewModule {
+        source_url: None,
+        ..valid_new_module()
+    };
+    assert!(m.validate().is_ok());
+}
+
+#[test]
+fn module_has_all_required_fields() {
+    let module = Module {
+        id: "test-module".into(),
+        type_: ModuleType::Sandbox,
+        is_enabled: false,
+        name: "Test Module".into(),
+        description: "Test Description".into(),
+        digest: "sha256:abc123".into(),
+        source_url: Some("https://example.com".into()),
+    };
+    assert_eq!(module.id, "test-module");
+    assert_eq!(module.type_, ModuleType::Sandbox);
+    assert!(!module.is_enabled);
+}
+
+#[test]
+fn update_module_request_from_trait() {
+    let req = UpdateModuleRequest {
+        is_enabled: Some(true),
+        name: Some("New Name".to_string()),
+        description: Some("New Description".to_string()),
+        source_url: Some("https://example.com".to_string()),
+    };
+    let update: UpdateModule = req.into();
+    assert_eq!(update.is_enabled, Some(true));
+    assert_eq!(update.name, Some("New Name".to_string()));
+    assert_eq!(update.digest, None);
+}
+
+#[test]
+fn new_module_accepts_all_module_types() {
+    use validator::Validate;
+    let types = vec![
+        ModuleType::Language,
+        ModuleType::Sandbox,
+        ModuleType::Interceptor,
+        ModuleType::Proxy,
+        ModuleType::Hook,
+    ];
+
+    for module_type in types {
+        let m = NewModule {
+            type_: module_type,
+            ..valid_new_module()
+        };
+        assert!(m.validate().is_ok());
+    }
+}

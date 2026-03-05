@@ -38,3 +38,7 @@ impl Config {
         s.try_deserialize()
     }
 }
+
+#[cfg(test)]
+#[path = "config_tests.rs"]
+mod tests;
