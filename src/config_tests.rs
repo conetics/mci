@@ -113,13 +113,10 @@ fn config_from_env_missing_required_database_url() {
             "MCI_S3_SECRET_KEY",
         ],
         || {
-            temp_env::with_vars(
-                vec![("MCI_S3_URL", Some("http://localhost:9000"))],
-                || {
-                    let result = Config::from_env();
-                    assert!(result.is_err());
-                },
-            );
+            temp_env::with_vars(vec![("MCI_S3_URL", Some("http://localhost:9000"))], || {
+                let result = Config::from_env();
+                assert!(result.is_err());
+            });
         },
     );
 }

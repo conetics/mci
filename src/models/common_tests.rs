@@ -85,7 +85,9 @@ mod test_validate_digest {
         let result = validate_digest(digest);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.params.contains_key(&std::borrow::Cow::from("algorithm")));
+        assert!(err
+            .params
+            .contains_key(&std::borrow::Cow::from("algorithm")));
     }
 
     #[test]
