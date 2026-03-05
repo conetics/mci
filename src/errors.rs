@@ -189,7 +189,10 @@ impl AppError {
             Ok(ServiceError::Conflict(msg)) => AppError::Conflict(msg),
             Ok(ServiceError::NotFound(msg)) => AppError::NotFound(msg),
             Ok(service_err) => AppError::BadRequest(service_err.to_string()),
-            Err(other) => AppError::Internal(other),
+            Err(other) => match other.downcast::<AppError>() {
+                Ok(app_err) => app_err,
+                Err(other) => AppError::Internal(other),
+            },
         }
     }
 }
