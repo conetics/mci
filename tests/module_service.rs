@@ -232,7 +232,12 @@ async fn create_module_from_registry_sets_source_url() -> Result<()> {
         let registry_url = registry_url.clone();
 
         move || -> Result<Module> {
-            block_on_runtime(create_module_from_registry(&pool, &http_client, &s3_client, &registry_url))
+            block_on_runtime(create_module_from_registry(
+                &pool,
+                &http_client,
+                &s3_client,
+                &registry_url,
+            ))
         }
     })
     .await??;
@@ -318,7 +323,12 @@ async fn update_module_from_source_updates_when_digest_changes() -> Result<()> {
         let s3_client = s3_client.clone();
 
         move || -> Result<Module> {
-            block_on_runtime(update_module_from_source(&pool, &http_client, &s3_client, "mod-4"))
+            block_on_runtime(update_module_from_source(
+                &pool,
+                &http_client,
+                &s3_client,
+                "mod-4",
+            ))
         }
     })
     .await??;

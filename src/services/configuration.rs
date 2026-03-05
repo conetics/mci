@@ -17,7 +17,10 @@ pub async fn get_schema(s3_client: &Client, target: ResourceKind, id: &str) -> R
     let response = match send_result {
         Ok(r) => r,
         Err(error::SdkError::ServiceError(err))
-            if matches!(err.err(), operation::get_object::GetObjectError::NoSuchKey(_)) =>
+            if matches!(
+                err.err(),
+                operation::get_object::GetObjectError::NoSuchKey(_)
+            ) =>
         {
             return Err(crate::errors::AppError::not_found("Configuration not found").into());
         }
@@ -47,7 +50,10 @@ pub async fn get_configuration(
     let response = match send_result {
         Ok(r) => r,
         Err(error::SdkError::ServiceError(err))
-            if matches!(err.err(), operation::get_object::GetObjectError::NoSuchKey(_)) =>
+            if matches!(
+                err.err(),
+                operation::get_object::GetObjectError::NoSuchKey(_)
+            ) =>
         {
             return Err(crate::errors::AppError::not_found("Configuration not found").into());
         }

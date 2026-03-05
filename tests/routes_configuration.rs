@@ -20,7 +20,13 @@ async fn definition_configuration_schema_get() -> Result<()> {
         "additionalProperties": false
     });
 
-    seed_schema(&s3_client, "definition-configurations", "cfg-def-1", &schema).await?;
+    seed_schema(
+        &s3_client,
+        "definition-configurations",
+        "cfg-def-1",
+        &schema,
+    )
+    .await?;
 
     let resp = get_request(&app, "/definitions/cfg-def-1/configuration/schema").await?;
 
@@ -49,7 +55,13 @@ async fn definition_configuration_put_and_get_flow() -> Result<()> {
         "additionalProperties": false
     });
 
-    seed_schema(&s3_client, "definition-configurations", "cfg-def-2", &schema).await?;
+    seed_schema(
+        &s3_client,
+        "definition-configurations",
+        "cfg-def-2",
+        &schema,
+    )
+    .await?;
 
     let config = json!({ "enabled": true, "name": "hello" });
 
@@ -82,12 +94,22 @@ async fn definition_configuration_put_rejects_invalid() -> Result<()> {
         "additionalProperties": false
     });
 
-    seed_schema(&s3_client, "definition-configurations", "cfg-def-3", &schema).await?;
+    seed_schema(
+        &s3_client,
+        "definition-configurations",
+        "cfg-def-3",
+        &schema,
+    )
+    .await?;
 
     let invalid_config = json!({ "enabled": "not-a-bool" });
 
-    let put_resp =
-        put_request(&app, "/definitions/cfg-def-3/configuration", &invalid_config).await?;
+    let put_resp = put_request(
+        &app,
+        "/definitions/cfg-def-3/configuration",
+        &invalid_config,
+    )
+    .await?;
     assert_eq!(put_resp.status(), StatusCode::BAD_REQUEST);
 
     let listing = s3_client
@@ -116,8 +138,20 @@ async fn definition_configuration_get_returns_validation_errors() -> Result<()> 
 
     let bad_config = json!({ "enabled": 42 });
 
-    seed_schema(&s3_client, "definition-configurations", "cfg-def-4", &schema).await?;
-    seed_config(&s3_client, "definition-configurations", "cfg-def-4", &bad_config).await?;
+    seed_schema(
+        &s3_client,
+        "definition-configurations",
+        "cfg-def-4",
+        &schema,
+    )
+    .await?;
+    seed_config(
+        &s3_client,
+        "definition-configurations",
+        "cfg-def-4",
+        &bad_config,
+    )
+    .await?;
 
     let get_resp = get_request(&app, "/definitions/cfg-def-4/configuration").await?;
 
@@ -150,16 +184,32 @@ async fn definition_configuration_patch_applies_operations() -> Result<()> {
 
     let config = json!({ "enabled": true, "name": "hello" });
 
-    seed_schema(&s3_client, "definition-configurations", "cfg-def-patch-1", &schema).await?;
-    seed_config(&s3_client, "definition-configurations", "cfg-def-patch-1", &config).await?;
+    seed_schema(
+        &s3_client,
+        "definition-configurations",
+        "cfg-def-patch-1",
+        &schema,
+    )
+    .await?;
+    seed_config(
+        &s3_client,
+        "definition-configurations",
+        "cfg-def-patch-1",
+        &config,
+    )
+    .await?;
 
     let patch_ops = json!([
         { "op": "replace", "path": "/name", "value": "world" },
         { "op": "add", "path": "/count", "value": 42 }
     ]);
 
-    let patch_resp =
-        patch_request(&app, "/definitions/cfg-def-patch-1/configuration", &patch_ops).await?;
+    let patch_resp = patch_request(
+        &app,
+        "/definitions/cfg-def-patch-1/configuration",
+        &patch_ops,
+    )
+    .await?;
     assert_eq!(patch_resp.status(), StatusCode::OK);
 
     let body = read_body(patch_resp).await?;
@@ -187,14 +237,24 @@ async fn definition_configuration_patch_defaults_to_empty_object() -> Result<()>
         "additionalProperties": false
     });
 
-    seed_schema(&s3_client, "definition-configurations", "cfg-def-patch-2", &schema).await?;
+    seed_schema(
+        &s3_client,
+        "definition-configurations",
+        "cfg-def-patch-2",
+        &schema,
+    )
+    .await?;
 
     let patch_ops = json!([
         { "op": "add", "path": "/enabled", "value": true }
     ]);
 
-    let patch_resp =
-        patch_request(&app, "/definitions/cfg-def-patch-2/configuration", &patch_ops).await?;
+    let patch_resp = patch_request(
+        &app,
+        "/definitions/cfg-def-patch-2/configuration",
+        &patch_ops,
+    )
+    .await?;
     assert_eq!(patch_resp.status(), StatusCode::OK);
 
     let body = read_body(patch_resp).await?;
@@ -221,15 +281,31 @@ async fn definition_configuration_patch_rejects_invalid_result() -> Result<()> {
 
     let config = json!({ "enabled": true });
 
-    seed_schema(&s3_client, "definition-configurations", "cfg-def-patch-3", &schema).await?;
-    seed_config(&s3_client, "definition-configurations", "cfg-def-patch-3", &config).await?;
+    seed_schema(
+        &s3_client,
+        "definition-configurations",
+        "cfg-def-patch-3",
+        &schema,
+    )
+    .await?;
+    seed_config(
+        &s3_client,
+        "definition-configurations",
+        "cfg-def-patch-3",
+        &config,
+    )
+    .await?;
 
     let patch_ops = json!([
         { "op": "add", "path": "/extra", "value": "not allowed" }
     ]);
 
-    let patch_resp =
-        patch_request(&app, "/definitions/cfg-def-patch-3/configuration", &patch_ops).await?;
+    let patch_resp = patch_request(
+        &app,
+        "/definitions/cfg-def-patch-3/configuration",
+        &patch_ops,
+    )
+    .await?;
     assert_eq!(patch_resp.status(), StatusCode::BAD_REQUEST);
 
     let get_obj = s3_client
@@ -261,16 +337,32 @@ async fn definition_configuration_patch_test_op_failure() -> Result<()> {
 
     let config = json!({ "enabled": true });
 
-    seed_schema(&s3_client, "definition-configurations", "cfg-def-patch-4", &schema).await?;
-    seed_config(&s3_client, "definition-configurations", "cfg-def-patch-4", &config).await?;
+    seed_schema(
+        &s3_client,
+        "definition-configurations",
+        "cfg-def-patch-4",
+        &schema,
+    )
+    .await?;
+    seed_config(
+        &s3_client,
+        "definition-configurations",
+        "cfg-def-patch-4",
+        &config,
+    )
+    .await?;
 
     let patch_ops = json!([
         { "op": "test", "path": "/enabled", "value": false },
         { "op": "replace", "path": "/enabled", "value": false }
     ]);
 
-    let patch_resp =
-        patch_request(&app, "/definitions/cfg-def-patch-4/configuration", &patch_ops).await?;
+    let patch_resp = patch_request(
+        &app,
+        "/definitions/cfg-def-patch-4/configuration",
+        &patch_ops,
+    )
+    .await?;
     assert_eq!(patch_resp.status(), StatusCode::BAD_REQUEST);
 
     pg_container.stop().await.ok();
@@ -354,8 +446,7 @@ async fn module_configuration_put_rejects_invalid() -> Result<()> {
 
     let invalid_config = json!({ "port": "not-a-number" });
 
-    let put_resp =
-        put_request(&app, "/modules/cfg-mod-3/configuration", &invalid_config).await?;
+    let put_resp = put_request(&app, "/modules/cfg-mod-3/configuration", &invalid_config).await?;
     assert_eq!(put_resp.status(), StatusCode::BAD_REQUEST);
 
     let listing = s3_client
@@ -385,7 +476,13 @@ async fn module_configuration_get_returns_validation_errors() -> Result<()> {
     let bad_config = json!({ "port": "wrong" });
 
     seed_schema(&s3_client, "module-configurations", "cfg-mod-4", &schema).await?;
-    seed_config(&s3_client, "module-configurations", "cfg-mod-4", &bad_config).await?;
+    seed_config(
+        &s3_client,
+        "module-configurations",
+        "cfg-mod-4",
+        &bad_config,
+    )
+    .await?;
 
     let get_resp = get_request(&app, "/modules/cfg-mod-4/configuration").await?;
 
@@ -417,8 +514,20 @@ async fn module_configuration_patch_applies_operations() -> Result<()> {
 
     let config = json!({ "host": "localhost", "port": 8080 });
 
-    seed_schema(&s3_client, "module-configurations", "cfg-mod-patch-1", &schema).await?;
-    seed_config(&s3_client, "module-configurations", "cfg-mod-patch-1", &config).await?;
+    seed_schema(
+        &s3_client,
+        "module-configurations",
+        "cfg-mod-patch-1",
+        &schema,
+    )
+    .await?;
+    seed_config(
+        &s3_client,
+        "module-configurations",
+        "cfg-mod-patch-1",
+        &config,
+    )
+    .await?;
 
     let patch_ops = json!([
         { "op": "replace", "path": "/port", "value": 9090 },
@@ -454,8 +563,20 @@ async fn module_configuration_patch_rejects_invalid_result() -> Result<()> {
 
     let config = json!({ "port": 8080 });
 
-    seed_schema(&s3_client, "module-configurations", "cfg-mod-patch-2", &schema).await?;
-    seed_config(&s3_client, "module-configurations", "cfg-mod-patch-2", &config).await?;
+    seed_schema(
+        &s3_client,
+        "module-configurations",
+        "cfg-mod-patch-2",
+        &schema,
+    )
+    .await?;
+    seed_config(
+        &s3_client,
+        "module-configurations",
+        "cfg-mod-patch-2",
+        &config,
+    )
+    .await?;
 
     let patch_ops = json!([
         { "op": "remove", "path": "/port" }
@@ -505,8 +626,20 @@ async fn delete_definition_also_deletes_configuration() -> Result<()> {
     let schema = json!({ "type": "object", "properties": { "enabled": { "type": "boolean" } } });
     let config = json!({ "enabled": true });
 
-    seed_schema(&s3_client, "definition-configurations", "cfg-def-del", &schema).await?;
-    seed_config(&s3_client, "definition-configurations", "cfg-def-del", &config).await?;
+    seed_schema(
+        &s3_client,
+        "definition-configurations",
+        "cfg-def-del",
+        &schema,
+    )
+    .await?;
+    seed_config(
+        &s3_client,
+        "definition-configurations",
+        "cfg-def-del",
+        &config,
+    )
+    .await?;
 
     let del_resp = delete_request(&app, "/definitions/cfg-def-del").await?;
     assert_eq!(del_resp.status(), StatusCode::NO_CONTENT);

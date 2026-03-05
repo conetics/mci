@@ -117,12 +117,13 @@ pub async fn create_module(
     let module_id = payload.id.clone();
     let pool_clone = pool.clone();
     let existing = tokio::task::spawn_blocking(move || -> Result<QueryResult<models::Module>> {
-        let mut conn = pool_clone.get().context("Failed to acquire db connection")?;
+        let mut conn = pool_clone
+            .get()
+            .context("Failed to acquire db connection")?;
         Ok(get_module(&mut conn, &module_id))
     })
     .await
-    .context("DB existence-check task panicked")?
-    ?;
+    .context("DB existence-check task panicked")??;
 
     match existing {
         Ok(_) => {
@@ -171,16 +172,18 @@ pub async fn create_module(
     };
 
     let pool_clone = pool.clone();
-    let insert_result = tokio::task::spawn_blocking(move || -> Result<QueryResult<models::Module>> {
-        let mut conn = pool_clone.get().context("Failed to acquire db connection")?;
-        Ok(diesel::insert_into(schema::modules::table)
-            .values(&new_module)
-            .returning(models::Module::as_returning())
-            .get_result(&mut conn))
-    })
-    .await
-    .context("DB insert task panicked")?
-    ?;
+    let insert_result =
+        tokio::task::spawn_blocking(move || -> Result<QueryResult<models::Module>> {
+            let mut conn = pool_clone
+                .get()
+                .context("Failed to acquire db connection")?;
+            Ok(diesel::insert_into(schema::modules::table)
+                .values(&new_module)
+                .returning(models::Module::as_returning())
+                .get_result(&mut conn))
+        })
+        .await
+        .context("DB insert task panicked")??;
 
     match insert_result {
         Ok(module) => Ok(module),
@@ -226,13 +229,14 @@ pub async fn update_module_from_source(
     let pool_clone = pool.clone();
     let module_id_owned = module_id.to_string();
     let module = tokio::task::spawn_blocking(move || {
-        let mut conn = pool_clone.get().context("Failed to acquire db connection")?;
+        let mut conn = pool_clone
+            .get()
+            .context("Failed to acquire db connection")?;
         get_module(&mut conn, &module_id_owned)
             .context("Failed to fetch current module from database")
     })
     .await
-    .context("DB fetch task panicked")?
-    ?;
+    .context("DB fetch task panicked")??;
 
     let source_url_str = module
         .source_url
@@ -283,7 +287,9 @@ pub async fn update_module_from_source(
     let pool_clone = pool.clone();
     let module_id_owned = module_id.to_string();
     let db_result = tokio::task::spawn_blocking(move || {
-        let mut conn = pool_clone.get().context("Failed to acquire db connection")?;
+        let mut conn = pool_clone
+            .get()
+            .context("Failed to acquire db connection")?;
         db_update_module(&mut conn, &module_id_owned, &update_data)
             .context("Failed to update module in database")
     })

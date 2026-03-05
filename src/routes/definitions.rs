@@ -23,13 +23,8 @@ pub async fn create_definition(
     let db_pool = state.db_pool.clone();
     let http_client = state.http_client.clone();
     let s3_client = state.s3_client.clone();
-    match services::definitions::create_definition(
-        &db_pool,
-        &http_client,
-        &s3_client,
-        &payload,
-    )
-    .await
+    match services::definitions::create_definition(&db_pool, &http_client, &s3_client, &payload)
+        .await
     {
         Ok(definition) => Ok((http::StatusCode::CREATED, Json(definition))),
         Err(e) => Err(errors::AppError::from_service_error(e)),
@@ -89,10 +84,9 @@ pub async fn delete_definition(
     let db_pool = state.db_pool.clone();
     let s3_client = state.s3_client.clone();
 
-    let rows_deleted =
-        services::definitions::delete_definition(&db_pool, &s3_client, &id)
-            .await
-            .map_err(errors::AppError::from_service_error)?;
+    let rows_deleted = services::definitions::delete_definition(&db_pool, &s3_client, &id)
+        .await
+        .map_err(errors::AppError::from_service_error)?;
     if rows_deleted == 0 {
         return Err(errors::AppError::not_found(format!(
             "Definition with id '{}' not found",

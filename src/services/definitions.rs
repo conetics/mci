@@ -65,12 +65,13 @@ pub async fn delete_definition(
     let s3_client_clone = s3_client.clone();
     let handle = tokio::runtime::Handle::current();
     tokio::task::spawn_blocking(move || {
-        let mut conn = pool_clone.get().context("Failed to acquire db connection")?;
+        let mut conn = pool_clone
+            .get()
+            .context("Failed to acquire db connection")?;
         conn.transaction::<usize, anyhow::Error, _>(|conn| {
-            let rows =
-                diesel::delete(schema::definitions::table.find(&definition_id_owned))
-                    .execute(conn)
-                    .context("Failed to delete definition from database")?;
+            let rows = diesel::delete(schema::definitions::table.find(&definition_id_owned))
+                .execute(conn)
+                .context("Failed to delete definition from database")?;
             if rows > 0 {
                 let prefix = format!("{}/", definition_id_owned);
                 handle
@@ -157,13 +158,15 @@ pub async fn create_definition(
 ) -> Result<models::Definition> {
     let definition_id = payload.id.clone();
     let pool_clone = pool.clone();
-    let existing = tokio::task::spawn_blocking(move || -> Result<QueryResult<models::Definition>> {
-        let mut conn = pool_clone.get().context("Failed to acquire db connection")?;
-        Ok(get_definition(&mut conn, &definition_id))
-    })
-    .await
-    .context("DB existence-check task panicked")?
-    ?;
+    let existing =
+        tokio::task::spawn_blocking(move || -> Result<QueryResult<models::Definition>> {
+            let mut conn = pool_clone
+                .get()
+                .context("Failed to acquire db connection")?;
+            Ok(get_definition(&mut conn, &definition_id))
+        })
+        .await
+        .context("DB existence-check task panicked")??;
 
     match existing {
         Ok(_) => {
@@ -218,24 +221,27 @@ pub async fn create_definition(
     };
 
     let pool_clone = pool.clone();
-    let insert_result = tokio::task::spawn_blocking(move || -> Result<QueryResult<models::Definition>> {
-        let mut conn = pool_clone.get().context("Failed to acquire db connection")?;
-        Ok(diesel::insert_into(schema::definitions::table)
-            .values(&new_definition)
-            .returning(models::Definition::as_returning())
-            .get_result(&mut conn))
-    })
-    .await
-    .context("DB insert task panicked")?
-    ?;
+    let insert_result =
+        tokio::task::spawn_blocking(move || -> Result<QueryResult<models::Definition>> {
+            let mut conn = pool_clone
+                .get()
+                .context("Failed to acquire db connection")?;
+            Ok(diesel::insert_into(schema::definitions::table)
+                .values(&new_definition)
+                .returning(models::Definition::as_returning())
+                .get_result(&mut conn))
+        })
+        .await
+        .context("DB insert task panicked")??;
 
     match insert_result {
         Ok(definition) => Ok(definition),
         Err(err) if is_unique_violation(&err) => {
             let _ = utils::s3::delete_object(s3_client, "definitions", &obj_key).await;
-            Err(crate::errors::AppError::conflict(
-                format!("Definition with ID '{}' already exists", payload.id),
-            )
+            Err(crate::errors::AppError::conflict(format!(
+                "Definition with ID '{}' already exists",
+                payload.id
+            ))
             .into())
         }
         Err(err) => {
@@ -272,18 +278,18 @@ pub async fn update_definition_from_source(
     let pool_clone = pool.clone();
     let definition_id_owned = definition_id.to_string();
     let definition = tokio::task::spawn_blocking(move || {
-        let mut conn = pool_clone.get().context("Failed to acquire db connection")?;
+        let mut conn = pool_clone
+            .get()
+            .context("Failed to acquire db connection")?;
         get_definition(&mut conn, &definition_id_owned)
             .context("Failed to fetch current definition from database")
     })
     .await
-    .context("DB fetch task panicked")?
-    ?;
+    .context("DB fetch task panicked")??;
 
-    let source_url_str = definition
-        .source_url
-        .as_ref()
-        .ok_or_else(|| errors::AppError::bad_request("source_url is required to update from source"))?;
+    let source_url_str = definition.source_url.as_ref().ok_or_else(|| {
+        errors::AppError::bad_request("source_url is required to update from source")
+    })?;
     let source = utils::source::Source::parse(source_url_str)?;
     let remote_payload = fetch_definition(http_client, &source)
         .await
@@ -328,13 +334,19 @@ pub async fn update_definition_from_source(
 
     let pool_clone = pool.clone();
     let definition_id_owned = definition_id.to_string();
-    let db_result = tokio::task::spawn_blocking(move || -> Result<QueryResult<models::Definition>> {
-        let mut conn = pool_clone.get().context("Failed to acquire db connection")?;
-        Ok(db_update_definition(&mut conn, &definition_id_owned, &update_data))
-    })
-    .await
-    .context("DB update task panicked")?
-    ?;
+    let db_result =
+        tokio::task::spawn_blocking(move || -> Result<QueryResult<models::Definition>> {
+            let mut conn = pool_clone
+                .get()
+                .context("Failed to acquire db connection")?;
+            Ok(db_update_definition(
+                &mut conn,
+                &definition_id_owned,
+                &update_data,
+            ))
+        })
+        .await
+        .context("DB update task panicked")??;
 
     match db_result {
         Ok(def) => Ok(def),

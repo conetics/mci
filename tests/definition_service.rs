@@ -163,7 +163,8 @@ async fn create_definition_conflict_errors() -> Result<()> {
                 digest: digest_for_task.clone(),
                 source_url: None,
             };
-            block_on_runtime(create_definition(&pool, &http_client, &s3_client, &payload)).map(|_| ())
+            block_on_runtime(create_definition(&pool, &http_client, &s3_client, &payload))
+                .map(|_| ())
         }
     })
     .await??;
@@ -255,7 +256,12 @@ async fn create_definition_from_registry_sets_source_url() -> Result<()> {
         let registry_url = registry_url.clone();
 
         move || -> Result<Definition> {
-            block_on_runtime(create_definition_from_registry(&pool, &http_client, &s3_client, &registry_url))
+            block_on_runtime(create_definition_from_registry(
+                &pool,
+                &http_client,
+                &s3_client,
+                &registry_url,
+            ))
         }
     })
     .await??;
@@ -350,7 +356,12 @@ async fn update_definition_from_source_updates_when_digest_changes() -> Result<(
         let s3_client = s3_client.clone();
 
         move || -> Result<Definition> {
-            block_on_runtime(update_definition_from_source(&pool, &http_client, &s3_client, "def-4"))
+            block_on_runtime(update_definition_from_source(
+                &pool,
+                &http_client,
+                &s3_client,
+                "def-4",
+            ))
         }
     })
     .await??;
@@ -685,7 +696,8 @@ async fn create_definition_compensates_s3_on_db_unique_violation() -> Result<()>
                 digest: digest_for_task,
                 source_url: None,
             };
-            block_on_runtime(create_definition(&pool, &http_client, &s3_client, &payload)).map(|_| ())
+            block_on_runtime(create_definition(&pool, &http_client, &s3_client, &payload))
+                .map(|_| ())
         }
     })
     .await?;

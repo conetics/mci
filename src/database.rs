@@ -6,7 +6,5 @@ pub type DbConnection = r2d2::PooledConnection<r2d2::ConnectionManager<prelude::
 pub fn create_pool(database_url: &str, pool_size: u32) -> Result<PgPool, r2d2::PoolError> {
     let manager = r2d2::ConnectionManager::<prelude::PgConnection>::new(database_url);
 
-    r2d2::Pool::builder()
-        .max_size(pool_size)
-        .build(manager)
+    r2d2::Pool::builder().max_size(pool_size).build(manager)
 }
