@@ -14,5 +14,7 @@ pub fn all_routes() -> Router<AppState> {
         .merge(configuration::create_route_v1())
         .merge(secrets::create_route_v1());
 
-    Router::new().nest("/v1", v1_routes)
+    Router::new()
+        .merge(v1_routes.clone())
+        .nest("/v1", v1_routes)
 }
