@@ -34,7 +34,7 @@ async fn get_definition_secrets_schema_returns_schema() -> Result<()> {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/definitions/sec-def-schema-1/secrets/schema")
+                .uri("/v1/definitions/sec-def-schema-1/secrets/schema")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -80,7 +80,7 @@ async fn patch_definition_secrets_applies_and_returns_no_content() -> Result<()>
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri("/definitions/sec-def-patch-1/secrets")
+                .uri("/v1/definitions/sec-def-patch-1/secrets")
                 .header(http::header::CONTENT_TYPE, "application/json")
                 .body(Body::from(serde_json::to_vec(&patch_ops)?))
                 .unwrap(),
@@ -134,7 +134,7 @@ async fn patch_definition_secrets_defaults_to_empty_object() -> Result<()> {
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri("/definitions/sec-def-patch-2/secrets")
+                .uri("/v1/definitions/sec-def-patch-2/secrets")
                 .header(http::header::CONTENT_TYPE, "application/json")
                 .body(Body::from(serde_json::to_vec(&patch_ops)?))
                 .unwrap(),
@@ -196,7 +196,7 @@ async fn patch_definition_secrets_rejects_invalid_result() -> Result<()> {
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri("/definitions/sec-def-patch-3/secrets")
+                .uri("/v1/definitions/sec-def-patch-3/secrets")
                 .header(http::header::CONTENT_TYPE, "application/json")
                 .body(Body::from(serde_json::to_vec(&patch_ops)?))
                 .unwrap(),
@@ -244,7 +244,7 @@ async fn delete_definition_also_deletes_secrets() -> Result<()> {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/definitions")
+                .uri("/v1/definitions")
                 .header(http::header::CONTENT_TYPE, "application/json")
                 .body(Body::from(serde_json::to_vec(&create_payload)?))
                 .unwrap(),
@@ -280,7 +280,7 @@ async fn delete_definition_also_deletes_secrets() -> Result<()> {
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri("/definitions/sec-def-del")
+                .uri("/v1/definitions/sec-def-del")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -325,7 +325,7 @@ async fn get_module_secrets_schema_returns_schema() -> Result<()> {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/modules/sec-mod-schema-1/secrets/schema")
+                .uri("/v1/modules/sec-mod-schema-1/secrets/schema")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -371,7 +371,7 @@ async fn patch_module_secrets_applies_and_returns_no_content() -> Result<()> {
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri("/modules/sec-mod-patch-1/secrets")
+                .uri("/v1/modules/sec-mod-patch-1/secrets")
                 .header(http::header::CONTENT_TYPE, "application/json")
                 .body(Body::from(serde_json::to_vec(&patch_ops)?))
                 .unwrap(),
@@ -440,7 +440,7 @@ async fn patch_module_secrets_rejects_invalid_result() -> Result<()> {
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri("/modules/sec-mod-patch-2/secrets")
+                .uri("/v1/modules/sec-mod-patch-2/secrets")
                 .header(http::header::CONTENT_TYPE, "application/json")
                 .body(Body::from(serde_json::to_vec(&patch_ops)?))
                 .unwrap(),
@@ -491,7 +491,7 @@ async fn delete_module_also_deletes_secrets() -> Result<()> {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/modules")
+                .uri("/v1/modules")
                 .header(http::header::CONTENT_TYPE, "application/json")
                 .body(Body::from(serde_json::to_vec(&create_payload)?))
                 .unwrap(),
@@ -527,7 +527,7 @@ async fn delete_module_also_deletes_secrets() -> Result<()> {
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri("/modules/sec-mod-del")
+                .uri("/v1/modules/sec-mod-del")
                 .body(Body::empty())
                 .unwrap(),
         )

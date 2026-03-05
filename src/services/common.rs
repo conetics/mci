@@ -49,7 +49,7 @@ pub struct Payload<T> {
     pub source_url: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize)]
 pub struct Filter<T> {
     pub query: Option<String>,
     pub is_enabled: Option<bool>,
@@ -58,6 +58,20 @@ pub struct Filter<T> {
     pub offset: Option<i32>,
     pub sort_by: Option<SortBy>,
     pub sort_order: Option<SortOrder>,
+}
+
+impl<T> Default for Filter<T> {
+    fn default() -> Self {
+        Self {
+            query: None,
+            is_enabled: None,
+            r#type: None,
+            limit: None,
+            offset: None,
+            sort_by: None,
+            sort_order: None,
+        }
+    }
 }
 
 pub fn validate_schema(

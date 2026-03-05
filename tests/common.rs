@@ -41,7 +41,7 @@ pub async fn initialize_pg() -> Result<(ContainerAsync<postgres::Postgres>, data
     let port = container.get_host_port_ipv4(5432).await?;
 
     let conn_str = format!("postgres://postgres:postgres@{host}:{port}/postgres");
-    let pool = tokio::task::spawn_blocking(move || database::create_pool(&conn_str, 5)).await?;
+    let pool = tokio::task::spawn_blocking(move || database::create_pool(&conn_str, 5)).await??;
     let migration_pool = pool.clone();
 
     tokio::task::spawn_blocking(move || -> Result<()> {
