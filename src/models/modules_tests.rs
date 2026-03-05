@@ -179,7 +179,7 @@ fn module_type_deserialize_rejects_uppercase() {
 fn module_type_clone_and_copy() {
     let t1 = ModuleType::Language;
     let t2 = t1;
-    let t3 = t1.clone();
+    let t3 = t1;
     assert_eq!(t1, t2);
     assert_eq!(t1, t3);
 }
