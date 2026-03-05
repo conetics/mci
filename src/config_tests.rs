@@ -1,284 +1,243 @@
 use super::*;
-use std::collections::HashMap;
-
-pub trait ConfigTestExt {
-    fn from_map(values: HashMap<&str, &str>) -> Result<Self, ConfigError>
-    where
-        Self: Sized;
-}
-
-impl ConfigTestExt for Config {
-    fn from_map(values: HashMap<&str, &str>) -> Result<Self, ConfigError> {
-        let mut builder = config::Config::builder()
-            .set_default("log_level", "info")?
-            .set_default("address", "0.0.0.0:7687")?
-            .set_default("s3_region", "us-east-1")?
-            .set_default("s3_access_key", "none")?
-            .set_default("s3_secret_key", "none")?;
-
-        for (key, value) in values {
-            builder = builder.set_override(key, value)?;
-        }
-
-        builder.build()?.try_deserialize()
-    }
-}
-
-fn minimal_config() -> HashMap<&'static str, &'static str> {
-    let mut map = HashMap::new();
-
-    map.insert("database_url", "postgres://localhost/test");
-    map.insert("s3_url", "http://localhost:9000");
-
-    map
-}
-
-/// Verifies that constructing a Config from the minimal valid map yields the expected defaults and provided values.
-///
-/// This test ensures required fields from `minimal_config()` are preserved and that optional fields default to `None`.
-///
-/// # Examples
-///
-/// ```
-/// let config = Config::from_map(minimal_config()).expect("Failed to load config");
-/// assert_eq!(config.database_url, "postgres://localhost/test");
-/// assert_eq!(config.s3_url, "http://localhost:9000");
-/// assert_eq!(config.log_level, "info");
-/// assert_eq!(config.address, "0.0.0.0:7687");
-/// assert_eq!(config.s3_region, "us-east-1");
-/// assert_eq!(config.s3_access_key, "none");
-/// assert_eq!(config.s3_secret_key, "none");
-/// assert_eq!(config.key_path, None);
-/// assert_eq!(config.cert_path, None);
-/// assert_eq!(config.s3_kms_key_id, None);
-/// ```
-#[test]
-fn test_minimal_valid_configuration() {
-    let config = Config::from_map(minimal_config()).expect("Failed to load config");
-
-    assert_eq!(config.database_url, "postgres://localhost/test");
-    assert_eq!(config.s3_url, "http://localhost:9000");
-    assert_eq!(config.log_level, "info");
-    assert_eq!(config.address, "0.0.0.0:7687");
-    assert_eq!(config.s3_region, "us-east-1");
-    assert_eq!(config.s3_access_key, "none");
-    assert_eq!(config.s3_secret_key, "none");
-    assert_eq!(config.key_path, None);
-    assert_eq!(config.cert_path, None);
-    assert_eq!(config.s3_kms_key_id, None);
-}
 
 #[test]
-fn test_full_configuration() {
-    let mut map = HashMap::new();
-
-    map.insert("log_level", "debug");
-    map.insert("address", "127.0.0.1:8080");
-    map.insert("key_path", "/path/to/key.pem");
-    map.insert("cert_path", "/path/to/cert.pem");
-    map.insert("database_url", "postgres://localhost/test");
-    map.insert("s3_url", "http://localhost:9000");
-    map.insert("s3_region", "eu-west-1");
-    map.insert("s3_access_key", "test_access_key");
-    map.insert("s3_secret_key", "test_secret_key");
-    map.insert(
-        "s3_kms_key_id",
-        "arn:aws:kms:us-east-1:123456789:key/test-key-id",
-    );
-
-    let config = Config::from_map(map).expect("Failed to load config");
-
-    assert_eq!(config.log_level, "debug");
-    assert_eq!(config.address, "127.0.0.1:8080");
-    assert_eq!(config.key_path, Some("/path/to/key.pem".to_string()));
-    assert_eq!(config.cert_path, Some("/path/to/cert.pem".to_string()));
-    assert_eq!(config.database_url, "postgres://localhost/test");
-    assert_eq!(config.s3_url, "http://localhost:9000");
-    assert_eq!(config.s3_region, "eu-west-1");
-    assert_eq!(config.s3_access_key, "test_access_key");
-    assert_eq!(config.s3_secret_key, "test_secret_key");
-    assert_eq!(
-        config.s3_kms_key_id,
-        Some("arn:aws:kms:us-east-1:123456789:key/test-key-id".to_string())
+fn config_from_env_with_defaults() {
+    temp_env::with_vars_unset(
+        vec![
+            "MCI_LOG_LEVEL",
+            "MCI_ADDRESS",
+            "MCI_DB_POOL_SIZE",
+            "MCI_DATABASE_URL",
+            "MCI_S3_URL",
+            "MCI_S3_REGION",
+            "MCI_S3_ACCESS_KEY",
+            "MCI_S3_SECRET_KEY",
+            "MCI_KEY_PATH",
+            "MCI_CERT_PATH",
+            "MCI_ALLOWED_ORIGINS",
+            "MCI_S3_KMS_KEY_ID",
+        ],
+        || {
+            temp_env::with_vars(
+                vec![
+                    ("MCI_DATABASE_URL", Some("postgres://localhost/test")),
+                    ("MCI_S3_URL", Some("http://localhost:9000")),
+                ],
+                || {
+                    let config = Config::from_env().expect("Failed to load config");
+                    assert_eq!(config.log_level, "info");
+                    assert_eq!(config.address, "0.0.0.0:7687");
+                    assert_eq!(config.db_pool_size, 10);
+                    assert_eq!(config.database_url, "postgres://localhost/test");
+                    assert_eq!(config.s3_url, "http://localhost:9000");
+                    assert_eq!(config.s3_region, "us-east-1");
+                    assert_eq!(config.s3_access_key, "none");
+                    assert_eq!(config.s3_secret_key, "none");
+                    assert_eq!(config.key_path, None);
+                    assert_eq!(config.cert_path, None);
+                    assert_eq!(config.allowed_origins, None);
+                    assert_eq!(config.s3_kms_key_id, None);
+                },
+            );
+        },
     );
 }
 
 #[test]
-fn test_production_like_config() {
-    let mut map = HashMap::new();
-
-    map.insert("log_level", "warn");
-    map.insert("address", "0.0.0.0:443");
-    map.insert("key_path", "/etc/letsencrypt/live/example.com/privkey.pem");
-    map.insert(
-        "cert_path",
-        "/etc/letsencrypt/live/example.com/fullchain.pem",
-    );
-    map.insert(
-        "database_url",
-        "postgres://user:password@db.example.com:5432/production",
-    );
-    map.insert("s3_url", "https://s3.us-west-2.amazonaws.com");
-    map.insert("s3_region", "us-west-2");
-    map.insert("s3_access_key", "AKIAIOSFODNN7EXAMPLE");
-    map.insert("s3_secret_key", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY");
-    map.insert(
-        "s3_kms_key_id",
-        "arn:aws:kms:us-west-2:123456789:key/prod-key-id",
-    );
-
-    let config = Config::from_map(map).expect("Failed to load config");
-
-    assert_eq!(config.log_level, "warn");
-    assert_eq!(config.address, "0.0.0.0:443");
-    assert_eq!(
-        config.key_path,
-        Some("/etc/letsencrypt/live/example.com/privkey.pem".to_string())
-    );
-    assert_eq!(
-        config.cert_path,
-        Some("/etc/letsencrypt/live/example.com/fullchain.pem".to_string())
-    );
-    assert_eq!(
-        config.database_url,
-        "postgres://user:password@db.example.com:5432/production"
-    );
-    assert_eq!(config.s3_url, "https://s3.us-west-2.amazonaws.com");
-    assert_eq!(config.s3_region, "us-west-2");
-    assert_eq!(config.s3_access_key, "AKIAIOSFODNN7EXAMPLE");
-    assert_eq!(
-        config.s3_secret_key,
-        "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
-    );
-    assert_eq!(
-        config.s3_kms_key_id,
-        Some("arn:aws:kms:us-west-2:123456789:key/prod-key-id".to_string())
-    );
-}
-
-#[test]
-fn test_defaults() {
-    let config = Config::from_map(minimal_config()).expect("Failed to load config");
-
-    assert_eq!(config.log_level, "info");
-    assert_eq!(config.address, "0.0.0.0:7687");
-    assert_eq!(config.s3_region, "us-east-1");
-    assert_eq!(config.s3_access_key, "none");
-    assert_eq!(config.s3_secret_key, "none");
-}
-
-#[test]
-fn test_default_overrides() {
-    let mut map = minimal_config();
-
-    map.insert("log_level", "debug");
-    map.insert("address", "127.0.0.1:8080");
-    map.insert("s3_region", "ap-southeast-1");
-    map.insert("s3_access_key", "my_access_key");
-    map.insert("s3_secret_key", "my_secret_key");
-
-    let config = Config::from_map(map).expect("Failed to load config");
-
-    assert_eq!(config.log_level, "debug");
-    assert_eq!(config.address, "127.0.0.1:8080");
-    assert_eq!(config.s3_region, "ap-southeast-1");
-    assert_eq!(config.s3_access_key, "my_access_key");
-    assert_eq!(config.s3_secret_key, "my_secret_key");
-}
-
-#[test]
-fn test_missing_requires_fields() {
-    let mut map1 = HashMap::new();
-    let mut map2 = HashMap::new();
-
-    map2.insert("s3_url", "http://localhost:9000");
-    map1.insert("database_url", "postgres://localhost/test");
-
-    assert!(
-        Config::from_map(map1).is_err(),
-        "Expected error when s3_url is missing"
-    );
-    assert!(
-        Config::from_map(map2).is_err(),
-        "Expected error when database_url is missing"
-    );
-    assert!(
-        Config::from_map(HashMap::new()).is_err(),
-        "Expected error when all required fields are missing"
+fn config_from_env_with_custom_values() {
+    temp_env::with_vars_unset(
+        vec![
+            "MCI_LOG_LEVEL",
+            "MCI_ADDRESS",
+            "MCI_DB_POOL_SIZE",
+            "MCI_DATABASE_URL",
+            "MCI_S3_URL",
+            "MCI_S3_REGION",
+            "MCI_S3_ACCESS_KEY",
+            "MCI_S3_SECRET_KEY",
+            "MCI_KEY_PATH",
+            "MCI_CERT_PATH",
+            "MCI_ALLOWED_ORIGINS",
+            "MCI_S3_KMS_KEY_ID",
+        ],
+        || {
+            temp_env::with_vars(
+                vec![
+                    ("MCI_LOG_LEVEL", Some("debug")),
+                    ("MCI_ADDRESS", Some("127.0.0.1:8080")),
+                    ("MCI_DB_POOL_SIZE", Some("20")),
+                    ("MCI_DATABASE_URL", Some("postgres://user:pass@host/db")),
+                    ("MCI_S3_URL", Some("https://s3.amazonaws.com")),
+                    ("MCI_S3_REGION", Some("us-west-2")),
+                    ("MCI_S3_ACCESS_KEY", Some("my-access-key")),
+                    ("MCI_S3_SECRET_KEY", Some("my-secret-key")),
+                    ("MCI_KEY_PATH", Some("/path/to/key.pem")),
+                    ("MCI_CERT_PATH", Some("/path/to/cert.pem")),
+                    ("MCI_ALLOWED_ORIGINS", Some("https://example.com")),
+                    ("MCI_S3_KMS_KEY_ID", Some("kms-key-123")),
+                ],
+                || {
+                    let config = Config::from_env().expect("Failed to load config");
+                    assert_eq!(config.log_level, "debug");
+                    assert_eq!(config.address, "127.0.0.1:8080");
+                    assert_eq!(config.db_pool_size, 20);
+                    assert_eq!(config.database_url, "postgres://user:pass@host/db");
+                    assert_eq!(config.s3_url, "https://s3.amazonaws.com");
+                    assert_eq!(config.s3_region, "us-west-2");
+                    assert_eq!(config.s3_access_key, "my-access-key");
+                    assert_eq!(config.s3_secret_key, "my-secret-key");
+                    assert_eq!(config.key_path, Some("/path/to/key.pem".to_string()));
+                    assert_eq!(config.cert_path, Some("/path/to/cert.pem".to_string()));
+                    assert_eq!(
+                        config.allowed_origins,
+                        Some("https://example.com".to_string())
+                    );
+                    assert_eq!(config.s3_kms_key_id, Some("kms-key-123".to_string()));
+                },
+            );
+        },
     );
 }
 
 #[test]
-fn test_unset_optional_is_none() {
-    let config = Config::from_map(minimal_config()).expect("Failed to load config");
-
-    assert_eq!(config.key_path, None);
-    assert_eq!(config.cert_path, None);
-    assert_eq!(config.s3_kms_key_id, None);
-}
-
-#[test]
-fn test_set_optional_is_some() {
-    let mut map = minimal_config();
-
-    map.insert("key_path", "/path/to/key.pem");
-    map.insert("cert_path", "/path/to/cert.pem");
-
-    let config = Config::from_map(map).expect("Failed to load config");
-
-    assert_eq!(config.key_path, Some("/path/to/key.pem".to_string()));
-    assert_eq!(config.cert_path, Some("/path/to/cert.pem".to_string()));
-}
-
-#[test]
-fn test_empty_string_values() {
-    let mut map = minimal_config();
-
-    map.insert("log_level", "");
-
-    let config = Config::from_map(map).expect("Failed to load config");
-
-    assert_eq!(config.log_level, "");
-}
-
-#[test]
-fn test_special_characters_in_values() {
-    let mut map = minimal_config();
-
-    map.insert("database_url", "postgres://user:p@ss!w0rd@host:5432/db");
-
-    let config = Config::from_map(map).expect("Failed to load config");
-
-    assert_eq!(
-        config.database_url,
-        "postgres://user:p@ss!w0rd@host:5432/db"
+fn config_from_env_missing_required_database_url() {
+    temp_env::with_vars_unset(
+        vec![
+            "MCI_LOG_LEVEL",
+            "MCI_ADDRESS",
+            "MCI_DB_POOL_SIZE",
+            "MCI_DATABASE_URL",
+            "MCI_S3_URL",
+            "MCI_S3_REGION",
+            "MCI_S3_ACCESS_KEY",
+            "MCI_S3_SECRET_KEY",
+        ],
+        || {
+            temp_env::with_vars(vec![("MCI_S3_URL", Some("http://localhost:9000"))], || {
+                let result = Config::from_env();
+                assert!(result.is_err());
+            });
+        },
     );
 }
 
 #[test]
-fn test_very_long_values() {
-    let long_value = "a".repeat(1000);
-    let mut map = minimal_config();
-
-    map.insert("database_url", &long_value);
-
-    let config = Config::from_map(map).expect("Failed to load config");
-
-    assert_eq!(config.database_url, long_value);
+fn config_from_env_missing_required_s3_url() {
+    temp_env::with_vars_unset(
+        vec![
+            "MCI_LOG_LEVEL",
+            "MCI_ADDRESS",
+            "MCI_DB_POOL_SIZE",
+            "MCI_DATABASE_URL",
+            "MCI_S3_URL",
+            "MCI_S3_REGION",
+            "MCI_S3_ACCESS_KEY",
+            "MCI_S3_SECRET_KEY",
+        ],
+        || {
+            temp_env::with_vars(
+                vec![("MCI_DATABASE_URL", Some("postgres://localhost/test"))],
+                || {
+                    let result = Config::from_env();
+                    assert!(result.is_err());
+                },
+            );
+        },
+    );
 }
 
 #[test]
-fn test_multiple_load_calls_are_consistent() {
-    let mut map = minimal_config();
+fn config_clone_and_partial_eq() {
+    let config1 = Config {
+        log_level: "info".to_string(),
+        address: "0.0.0.0:7687".to_string(),
+        key_path: None,
+        cert_path: None,
+        database_url: "postgres://localhost/test".to_string(),
+        db_pool_size: 10,
+        s3_url: "http://localhost:9000".to_string(),
+        s3_region: "us-east-1".to_string(),
+        s3_access_key: "access".to_string(),
+        s3_secret_key: "secret".to_string(),
+        s3_kms_key_id: None,
+        allowed_origins: None,
+    };
 
-    map.insert("log_level", "debug");
-    map.insert("address", "127.0.0.1:8080");
+    let config2 = config1.clone();
+    assert_eq!(config1, config2);
+}
 
-    let config1 = Config::from_map(map.clone()).expect("Failed to load config");
-    let config2 = Config::from_map(map).expect("Failed to load config");
+#[test]
+fn config_partial_eq_different_values() {
+    let config1 = Config {
+        log_level: "info".to_string(),
+        address: "0.0.0.0:7687".to_string(),
+        key_path: None,
+        cert_path: None,
+        database_url: "postgres://localhost/test".to_string(),
+        db_pool_size: 10,
+        s3_url: "http://localhost:9000".to_string(),
+        s3_region: "us-east-1".to_string(),
+        s3_access_key: "access".to_string(),
+        s3_secret_key: "secret".to_string(),
+        s3_kms_key_id: None,
+        allowed_origins: None,
+    };
 
-    assert_eq!(config1.log_level, config2.log_level);
-    assert_eq!(config1.address, config2.address);
-    assert_eq!(config1.database_url, config2.database_url);
-    assert_eq!(config1.s3_url, config2.s3_url);
+    let config2 = Config {
+        log_level: "debug".to_string(),
+        ..config1.clone()
+    };
+
+    assert_ne!(config1, config2);
+}
+
+#[test]
+fn config_debug_format() {
+    let config = Config {
+        log_level: "info".to_string(),
+        address: "0.0.0.0:7687".to_string(),
+        key_path: None,
+        cert_path: None,
+        database_url: "postgres://localhost/test".to_string(),
+        db_pool_size: 10,
+        s3_url: "http://localhost:9000".to_string(),
+        s3_region: "us-east-1".to_string(),
+        s3_access_key: "access".to_string(),
+        s3_secret_key: "secret".to_string(),
+        s3_kms_key_id: None,
+        allowed_origins: None,
+    };
+
+    let debug_str = format!("{:?}", config);
+    assert!(debug_str.contains("log_level"));
+    assert!(debug_str.contains("address"));
+    assert!(debug_str.contains("database_url"));
+}
+
+#[test]
+fn config_invalid_db_pool_size_type() {
+    temp_env::with_vars_unset(
+        vec![
+            "MCI_LOG_LEVEL",
+            "MCI_ADDRESS",
+            "MCI_DB_POOL_SIZE",
+            "MCI_DATABASE_URL",
+            "MCI_S3_URL",
+            "MCI_S3_REGION",
+        ],
+        || {
+            temp_env::with_vars(
+                vec![
+                    ("MCI_DATABASE_URL", Some("postgres://localhost/test")),
+                    ("MCI_S3_URL", Some("http://localhost:9000")),
+                    ("MCI_DB_POOL_SIZE", Some("not-a-number")),
+                ],
+                || {
+                    let result = Config::from_env();
+                    assert!(result.is_err());
+                },
+            );
+        },
+    );
 }

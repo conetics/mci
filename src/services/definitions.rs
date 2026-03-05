@@ -1,0 +1,358 @@
+use crate::services::common::{fetch_payload, Filter, Payload};
+pub use crate::services::common::{SortBy, SortOrder};
+use crate::{database, errors, models, schema, utils};
+use anyhow::{Context, Result};
+use aws_sdk_s3;
+use aws_smithy_types::byte_stream;
+use diesel::prelude::*;
+use futures::stream::TryStreamExt;
+use http_body_util::StreamBody;
+use reqwest;
+
+pub type DefinitionPayload = Payload<String>;
+pub type DefinitionFilter = Filter<String>;
+
+async fn fetch_definition(
+    http_client: &reqwest::Client,
+    source: &utils::source::Source,
+) -> Result<DefinitionPayload> {
+    fetch_payload::<DefinitionPayload>(http_client, source, "definition").await
+}
+
+fn db_update_definition(
+    conn: &mut database::DbConnection,
+    definition_id: &str,
+    update_definition: &models::UpdateDefinition,
+) -> QueryResult<models::Definition> {
+    diesel::update(schema::definitions::table.find(definition_id))
+        .set(update_definition)
+        .returning(models::Definition::as_returning())
+        .get_result(conn)
+}
+
+pub fn get_definition(
+    conn: &mut database::DbConnection,
+    definition_id: &str,
+) -> QueryResult<models::Definition> {
+    schema::definitions::table
+        .find(definition_id)
+        .select(models::Definition::as_select())
+        .first(conn)
+}
+
+pub fn db_delete_definition(
+    conn: &mut database::DbConnection,
+    definition_id: &str,
+) -> QueryResult<usize> {
+    diesel::delete(schema::definitions::table.find(definition_id)).execute(conn)
+}
+
+pub async fn cleanup_definition_artifacts(
+    s3_client: &aws_sdk_s3::Client,
+    definition_id: &str,
+) -> Result<()> {
+    let prefix = format!("{}/", definition_id);
+    utils::s3::delete_objects_with_prefix(s3_client, "definitions", &prefix).await
+}
+
+pub async fn delete_definition(
+    pool: &database::PgPool,
+    s3_client: &aws_sdk_s3::Client,
+    definition_id: &str,
+) -> Result<usize> {
+    let definition_id_owned = definition_id.to_string();
+    let pool_clone = pool.clone();
+    let s3_client_clone = s3_client.clone();
+    let handle = tokio::runtime::Handle::current();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool_clone
+            .get()
+            .context("Failed to acquire db connection")?;
+        conn.transaction::<usize, anyhow::Error, _>(|conn| {
+            let rows = diesel::delete(schema::definitions::table.find(&definition_id_owned))
+                .execute(conn)
+                .context("Failed to delete definition from database")?;
+            if rows > 0 {
+                let prefix = format!("{}/", definition_id_owned);
+                handle
+                    .block_on(utils::s3::delete_objects_with_prefix(
+                        &s3_client_clone,
+                        "definitions",
+                        &prefix,
+                    ))
+                    .context(
+                        "Failed to delete definition S3 artifacts; rolling back DB deletion",
+                    )?;
+            }
+            Ok(rows)
+        })
+        .context("Delete definition transaction failed")
+    })
+    .await
+    .context("DB delete transaction task panicked")?
+}
+
+pub fn update_definition(
+    conn: &mut database::DbConnection,
+    definition_id: &str,
+    update_definition: &models::UpdateDefinition,
+) -> QueryResult<models::Definition> {
+    db_update_definition(conn, definition_id, update_definition)
+}
+
+pub fn list_definitions(
+    conn: &mut database::DbConnection,
+    filter: &DefinitionFilter,
+) -> QueryResult<Vec<models::Definition>> {
+    use crate::schema::definitions::dsl::*;
+
+    let mut query = schema::definitions::table.into_boxed();
+
+    if let Some(ref search_query) = filter.query {
+        query = query.filter(
+            id.ilike(format!("%{}%", search_query))
+                .or(name.ilike(format!("%{}%", search_query)))
+                .or(description.ilike(format!("%{}%", search_query))),
+        );
+    }
+
+    if let Some(enabled_filter) = filter.is_enabled {
+        query = query.filter(is_enabled.eq(enabled_filter));
+    }
+    if let Some(ref definition_type_filter) = filter.r#type {
+        query = query.filter(type_.eq(definition_type_filter));
+    }
+
+    match (&filter.sort_by, &filter.sort_order) {
+        (Some(SortBy::Id), Some(SortOrder::Desc)) => query = query.order(id.desc()),
+        (Some(SortBy::Id), _) => query = query.order(id.asc()),
+        (Some(SortBy::Type), Some(SortOrder::Desc)) => query = query.order(type_.desc()),
+        (Some(SortBy::Type), _) => query = query.order(type_.asc()),
+        (Some(SortBy::Name), Some(SortOrder::Desc)) => query = query.order(name.desc()),
+        (Some(SortBy::Name), _) => query = query.order(name.asc()),
+        (None, _) => {}
+    }
+
+    if let Some(limit_val) = filter.limit {
+        query = query.limit(limit_val as i64);
+    }
+    if let Some(offset_val) = filter.offset {
+        query = query.offset(offset_val as i64);
+    }
+
+    query.select(models::Definition::as_select()).load(conn)
+}
+
+fn is_unique_violation(err: &diesel::result::Error) -> bool {
+    matches!(
+        err,
+        diesel::result::Error::DatabaseError(diesel::result::DatabaseErrorKind::UniqueViolation, _)
+    )
+}
+
+pub async fn create_definition(
+    pool: &database::PgPool,
+    http_client: &reqwest::Client,
+    s3_client: &aws_sdk_s3::Client,
+    payload: &DefinitionPayload,
+) -> Result<models::Definition> {
+    let definition_id = payload.id.clone();
+    let pool_clone = pool.clone();
+    let existing =
+        tokio::task::spawn_blocking(move || -> Result<QueryResult<models::Definition>> {
+            let mut conn = pool_clone
+                .get()
+                .context("Failed to acquire db connection")?;
+            Ok(get_definition(&mut conn, &definition_id))
+        })
+        .await
+        .context("DB existence-check task panicked")??;
+
+    match existing {
+        Ok(_) => {
+            return Err(errors::ServiceError::Conflict(format!(
+                "Definition with ID '{}' already exists",
+                payload.id
+            ))
+            .into());
+        }
+        Err(diesel::result::Error::NotFound) => {}
+        Err(err) => {
+            return Err(anyhow::Error::new(err)).context("Failed to check existing definition");
+        }
+    }
+
+    let definition_url = utils::source::Source::parse(&payload.file_url)?;
+    let obj_key = format!("{}/definition", payload.id);
+
+    let body = match &definition_url {
+        utils::source::Source::Http(url) => {
+            let response = utils::stream::stream_content_from_url(http_client, url)
+                .await
+                .context("Failed to fetch definition file from URL")?;
+
+            let stream = response.bytes_stream();
+            let frames = stream.map_ok(hyper::body::Frame::data);
+            let body = StreamBody::new(frames);
+            byte_stream::ByteStream::from_body_1_x(body)
+        }
+        utils::source::Source::File(path) => utils::stream::stream_content_from_path(path)
+            .await
+            .context("Failed to read definition file from path")?,
+    };
+
+    utils::s3::put_stream(
+        s3_client,
+        "definitions",
+        &obj_key,
+        body,
+        Some(&payload.digest),
+    )
+    .await
+    .context("Failed to upload definition to S3")?;
+
+    let new_definition = models::NewDefinition {
+        id: payload.id.clone(),
+        type_: payload.r#type.clone(),
+        name: payload.name.clone(),
+        description: payload.description.clone(),
+        digest: payload.digest.clone(),
+        source_url: payload.source_url.clone(),
+    };
+
+    let pool_clone = pool.clone();
+    let insert_result =
+        tokio::task::spawn_blocking(move || -> Result<QueryResult<models::Definition>> {
+            let mut conn = pool_clone
+                .get()
+                .context("Failed to acquire db connection")?;
+            Ok(diesel::insert_into(schema::definitions::table)
+                .values(&new_definition)
+                .returning(models::Definition::as_returning())
+                .get_result(&mut conn))
+        })
+        .await
+        .context("DB insert task panicked")??;
+
+    match insert_result {
+        Ok(definition) => Ok(definition),
+        Err(err) if is_unique_violation(&err) => {
+            let _ = utils::s3::delete_object(s3_client, "definitions", &obj_key).await;
+            Err(crate::errors::AppError::conflict(format!(
+                "Definition with ID '{}' already exists",
+                payload.id
+            ))
+            .into())
+        }
+        Err(err) => {
+            let _ = utils::s3::delete_object(s3_client, "definitions", &obj_key).await;
+            Err(anyhow::Error::new(err)).context("Failed to save definition to database")
+        }
+    }
+}
+
+pub async fn create_definition_from_registry(
+    pool: &database::PgPool,
+    http_client: &reqwest::Client,
+    s3_client: &aws_sdk_s3::Client,
+    source_input: &str,
+) -> Result<models::Definition> {
+    let source = utils::source::Source::parse(source_input)?;
+    let mut payload = fetch_definition(http_client, &source)
+        .await
+        .context("Failed to load definition metadata")?;
+
+    if payload.source_url.is_none() {
+        payload.source_url = Some(source_input.to_string());
+    }
+
+    create_definition(pool, http_client, s3_client, &payload).await
+}
+
+pub async fn update_definition_from_source(
+    pool: &database::PgPool,
+    http_client: &reqwest::Client,
+    s3_client: &aws_sdk_s3::Client,
+    definition_id: &str,
+) -> Result<models::Definition> {
+    let pool_clone = pool.clone();
+    let definition_id_owned = definition_id.to_string();
+    let definition = tokio::task::spawn_blocking(move || {
+        let mut conn = pool_clone
+            .get()
+            .context("Failed to acquire db connection")?;
+        get_definition(&mut conn, &definition_id_owned)
+            .context("Failed to fetch current definition from database")
+    })
+    .await
+    .context("DB fetch task panicked")??;
+
+    let source_url_str = definition.source_url.as_ref().ok_or_else(|| {
+        errors::AppError::bad_request("source_url is required to update from source")
+    })?;
+    let source = utils::source::Source::parse(source_url_str)?;
+    let remote_payload = fetch_definition(http_client, &source)
+        .await
+        .context("Failed to fetch updated definition metadata from source")?;
+
+    if definition.digest == remote_payload.digest {
+        return Ok(definition);
+    }
+
+    let definition_file_source = utils::source::Source::parse(&remote_payload.file_url)?;
+    let obj_key = format!("{}/definition", definition.id);
+    let body = match &definition_file_source {
+        utils::source::Source::Http(url) => {
+            let response = utils::stream::stream_content_from_url(http_client, url)
+                .await
+                .context("Failed to fetch updated definition file from URL")?;
+            let stream = response.bytes_stream();
+            let frames = stream.map_ok(hyper::body::Frame::data);
+            let body = StreamBody::new(frames);
+
+            byte_stream::ByteStream::from_body_1_x(body)
+        }
+        utils::source::Source::File(path) => utils::stream::stream_content_from_path(path)
+            .await
+            .context("Failed to read updated definition file from path")?,
+    };
+
+    utils::s3::put_stream(
+        s3_client,
+        "definitions",
+        &obj_key,
+        body,
+        Some(&remote_payload.digest),
+    )
+    .await
+    .context("Failed to upload updated definition to S3")?;
+
+    let update_data = models::UpdateDefinition {
+        digest: Some(remote_payload.digest),
+        ..Default::default()
+    };
+
+    let pool_clone = pool.clone();
+    let definition_id_owned = definition_id.to_string();
+    let db_result =
+        tokio::task::spawn_blocking(move || -> Result<QueryResult<models::Definition>> {
+            let mut conn = pool_clone
+                .get()
+                .context("Failed to acquire db connection")?;
+            Ok(db_update_definition(
+                &mut conn,
+                &definition_id_owned,
+                &update_data,
+            ))
+        })
+        .await
+        .context("DB update task panicked")??;
+
+    match db_result {
+        Ok(def) => Ok(def),
+        Err(err) => {
+            let _ = utils::s3::delete_object(s3_client, "definitions", &obj_key).await;
+            Err(anyhow::Error::new(err)).context("Failed to update definition in database")
+        }
+    }
+}

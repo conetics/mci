@@ -1,9 +1,12 @@
+mod common;
+
 use anyhow::Result;
+use common::{initialize_pg, initialize_s3};
 use diesel::prelude::*;
 use mci::{
     models::{Module, ModuleType, NewModule},
     schema::modules::dsl::*,
-    services::modules_services::{
+    services::modules::{
         create_module, create_module_from_registry, list_modules, update_module,
         update_module_from_source, ModuleFilter, ModulePayload, SortBy, SortOrder,
     },
@@ -12,12 +15,14 @@ use sha2::{Digest, Sha256};
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-mod common;
+fn block_on_runtime<T>(fut: impl std::future::Future<Output = Result<T>>) -> Result<T> {
+    tokio::runtime::Handle::current().block_on(fut)
+}
 
 #[tokio::test]
 async fn create_module_from_http_source() -> Result<()> {
-    let (pg_container, pool) = common::initialize_pg().await?;
-    let (s3_container, s3_client) = common::initialize_s3().await?;
+    let (pg_container, pool) = initialize_pg().await?;
+    let (s3_container, s3_client) = initialize_s3().await?;
 
     s3_client.create_bucket().bucket("modules").send().await?;
 
@@ -55,7 +60,6 @@ async fn create_module_from_http_source() -> Result<()> {
         let meta_url = format!("{}/meta.json", mock.uri());
 
         move || -> Result<Module> {
-            let mut conn = pool.get()?;
             let payload = ModulePayload {
                 id: "mod-1".into(),
                 name: "Example Name".into(),
@@ -66,9 +70,7 @@ async fn create_module_from_http_source() -> Result<()> {
                 source_url: Some(meta_url.clone()),
             };
 
-            tokio::runtime::Handle::current().block_on(async {
-                create_module(&mut conn, &http_client, &s3_client, &payload).await
-            })
+            block_on_runtime(create_module(&pool, &http_client, &s3_client, &payload))
         }
     })
     .await??;
@@ -93,8 +95,8 @@ async fn create_module_from_http_source() -> Result<()> {
 
 #[tokio::test]
 async fn create_module_conflict_errors() -> Result<()> {
-    let (pg_container, pool) = common::initialize_pg().await?;
-    let (s3_container, s3_client) = common::initialize_s3().await?;
+    let (pg_container, pool) = initialize_pg().await?;
+    let (s3_container, s3_client) = initialize_s3().await?;
 
     s3_client.create_bucket().bucket("modules").send().await?;
 
@@ -137,7 +139,6 @@ async fn create_module_conflict_errors() -> Result<()> {
         let http_client = http_client.clone();
 
         move || -> Result<()> {
-            let mut conn = pool.get()?;
             let payload = ModulePayload {
                 id: "mod-2".into(),
                 name: "Name".into(),
@@ -147,11 +148,7 @@ async fn create_module_conflict_errors() -> Result<()> {
                 digest: digest_for_task.clone(),
                 source_url: None,
             };
-            tokio::runtime::Handle::current()
-                .block_on(async {
-                    create_module(&mut conn, &http_client, &s3_client, &payload).await
-                })
-                .map(|_| ())
+            block_on_runtime(create_module(&pool, &http_client, &s3_client, &payload)).map(|_| ())
         }
     })
     .await??;
@@ -167,7 +164,6 @@ async fn create_module_conflict_errors() -> Result<()> {
         let meta_url = meta_url.clone();
 
         move || -> Result<()> {
-            let mut conn = pool.get()?;
             let payload = ModulePayload {
                 id: "mod-2".into(),
                 name: "Name".into(),
@@ -177,9 +173,7 @@ async fn create_module_conflict_errors() -> Result<()> {
                 digest: digest_for_task,
                 source_url: Some(meta_url),
             };
-            tokio::runtime::Handle::current().block_on(async {
-                create_module(&mut conn, &http_client, &s3_client, &payload).await
-            })?;
+            block_on_runtime(create_module(&pool, &http_client, &s3_client, &payload))?;
             Ok(())
         }
     })
@@ -199,8 +193,8 @@ async fn create_module_conflict_errors() -> Result<()> {
 
 #[tokio::test]
 async fn create_module_from_registry_sets_source_url() -> Result<()> {
-    let (pg_container, pool) = common::initialize_pg().await?;
-    let (s3_container, s3_client) = common::initialize_s3().await?;
+    let (pg_container, pool) = initialize_pg().await?;
+    let (s3_container, s3_client) = initialize_s3().await?;
 
     s3_client.create_bucket().bucket("modules").send().await?;
 
@@ -238,11 +232,12 @@ async fn create_module_from_registry_sets_source_url() -> Result<()> {
         let registry_url = registry_url.clone();
 
         move || -> Result<Module> {
-            let mut conn = pool.get()?;
-            tokio::runtime::Handle::current().block_on(async {
-                create_module_from_registry(&mut conn, &http_client, &s3_client, &registry_url)
-                    .await
-            })
+            block_on_runtime(create_module_from_registry(
+                &pool,
+                &http_client,
+                &s3_client,
+                &registry_url,
+            ))
         }
     })
     .await??;
@@ -266,8 +261,8 @@ async fn create_module_from_registry_sets_source_url() -> Result<()> {
 
 #[tokio::test]
 async fn update_module_from_source_updates_when_digest_changes() -> Result<()> {
-    let (pg_container, pool) = common::initialize_pg().await?;
-    let (s3_container, s3_client) = common::initialize_s3().await?;
+    let (pg_container, pool) = initialize_pg().await?;
+    let (s3_container, s3_client) = initialize_s3().await?;
 
     s3_client.create_bucket().bucket("modules").send().await?;
 
@@ -328,10 +323,12 @@ async fn update_module_from_source_updates_when_digest_changes() -> Result<()> {
         let s3_client = s3_client.clone();
 
         move || -> Result<Module> {
-            let mut conn = pool.get()?;
-            tokio::runtime::Handle::current().block_on(async {
-                update_module_from_source(&mut conn, &http_client, &s3_client, "mod-4").await
-            })
+            block_on_runtime(update_module_from_source(
+                &pool,
+                &http_client,
+                &s3_client,
+                "mod-4",
+            ))
         }
     })
     .await??;
@@ -360,7 +357,7 @@ async fn update_module_from_source_updates_when_digest_changes() -> Result<()> {
 async fn update_module_via_request_strips_digest() -> Result<()> {
     use mci::models::UpdateModuleRequest;
 
-    let (pg_container, pool) = common::initialize_pg().await?;
+    let (pg_container, pool) = initialize_pg().await?;
 
     let old_digest = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
 
@@ -425,7 +422,7 @@ async fn update_module_via_request_strips_digest() -> Result<()> {
 
 #[tokio::test]
 async fn list_modules_filters_and_sorting() -> Result<()> {
-    let (pg_container, pool) = common::initialize_pg().await?;
+    let (pg_container, pool) = initialize_pg().await?;
 
     tokio::task::spawn_blocking({
         let pool = pool.clone();
@@ -498,8 +495,13 @@ async fn list_modules_filters_and_sorting() -> Result<()> {
             list_modules(
                 &mut conn,
                 &ModuleFilter {
+                    query: None,
                     is_enabled: Some(false),
-                    ..Default::default()
+                    r#type: None,
+                    limit: None,
+                    offset: None,
+                    sort_by: None,
+                    sort_order: None,
                 },
             )
             .map_err(Into::into)
@@ -517,10 +519,13 @@ async fn list_modules_filters_and_sorting() -> Result<()> {
             list_modules(
                 &mut conn,
                 &ModuleFilter {
+                    query: None,
+                    is_enabled: None,
                     r#type: Some(ModuleType::Proxy),
+                    limit: None,
+                    offset: None,
                     sort_by: Some(SortBy::Name),
                     sort_order: Some(SortOrder::Desc),
-                    ..Default::default()
                 },
             )
             .map_err(Into::into)
