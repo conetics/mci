@@ -1,10 +1,10 @@
 use super::common::validate_digest;
 use crate::schema;
 use crate::utils::regex;
+use chrono::{DateTime, Utc};
 use diesel::deserialize;
 use diesel::pg;
 use diesel::serialize;
-use chrono::{DateTime, Utc};
 use diesel::{AsChangeset, AsExpression, FromSqlRow, Insertable, Queryable, Selectable};
 use serde::{Deserialize, Serialize};
 use std::io::Write;
