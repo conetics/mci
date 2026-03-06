@@ -435,7 +435,7 @@ async fn list_modules_filters_and_sorting() -> Result<()> {
                         type_: ModuleType::Proxy,
                         name: "Alpha".into(),
                         description: "First".into(),
-                        digest: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".into(),
+                        digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
                         source_url: None,
                     },
                     NewModule {
@@ -443,7 +443,7 @@ async fn list_modules_filters_and_sorting() -> Result<()> {
                         type_: ModuleType::Sandbox,
                         name: "Beta".into(),
                         description: "Second".into(),
-                        digest: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".into(),
+                        digest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".into(),
                         source_url: None,
                     },
                     NewModule {
@@ -451,7 +451,7 @@ async fn list_modules_filters_and_sorting() -> Result<()> {
                         type_: ModuleType::Proxy,
                         name: "Gamma".into(),
                         description: "Third".into(),
-                        digest: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".into(),
+                        digest: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc".into(),
                         source_url: None,
                     },
                 ])
