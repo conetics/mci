@@ -4,12 +4,11 @@ CREATE TABLE routines (
     pid                 UUID            PRIMARY KEY DEFAULT gen_random_uuid(),
     name                TEXT            NOT NULL,
     description         TEXT            NOT NULL DEFAULT '',
-    code_hash           TEXT            NOT NULL,
     environment         TEXT            NOT NULL,
     env_config          JSONB           NOT NULL DEFAULT '{}',
     priority            SMALLINT        NOT NULL DEFAULT 128 CONSTRAINT priority_range CHECK (priority BETWEEN 0 AND 255),
     timeout_ms          BIGINT          CONSTRAINT timeout_positive CHECK (timeout_ms > 0),
-    retry_max_attempts  SMALLINT        CONSTRAINT retry_max_attempts_positive CHECK (retry_max_attempts >= 1),
+    retry_max_attempts  SMALLINT        NOT NULL DEFAULT 0,
     created_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW()
 );

@@ -5,42 +5,19 @@ use tokio::sync::broadcast;
 use uuid::Uuid;
 use validator::Validate;
 
-pub type Pid = Uuid;
-pub type Priority = i16;
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum ProcessStatus {
+pub enum ProcessPhase {
     Idle,
     Queued,
     Running,
-    Retrying,
-    Success,
-    Failed,
-    TimedOut,
-    Cancelled,
 }
 
-impl ProcessStatus {
-    pub fn is_terminal(&self) -> bool {
-        matches!(self, Self::Success | Self::Failed | Self::TimedOut | Self::Cancelled)
-    }
-
-    pub fn is_cancellable(&self) -> bool {
-        matches!(self, Self::Queued | Self::Running | Self::Retrying)
-    }
-
-    pub fn is_restartable(&self) -> bool {
-        matches!(self, Self::Success | Self::Failed | Self::TimedOut | Self::Cancelled)
-    }
-
-    pub fn is_updatable(&self) -> bool {
-        matches!(self, Self::Idle)
-    }
-
-    pub fn is_evictable(&self) -> bool {
-        matches!(self, Self::Idle) || self.is_terminal()
-    }
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ExitStatus {
+    Success,
+    Failed,
 }
 
 #[derive(Debug, Clone)]
@@ -73,38 +50,21 @@ impl ProcessChannels {
 
 #[derive(Debug)]
 pub struct ProcessInstance {
-    pub pid: Pid,
+    pub pid: Uuid,
     pub name: String,
     pub description: String,
-    pub code_hash: String,
     pub environment: String,
     pub env_config: JsonValue,
-    pub priority: Priority,
+    pub priority: u8,
     pub timeout_ms: Option<u64>,
-    pub retry_max_attempts: Option<u8>,
-    pub status: ProcessStatus,
-    pub attempt: Option<u8>,
-    pub started_at: Option<DateTime<Utc>>,
-    pub finished_at: Option<DateTime<Utc>>,
+    pub retry_max_attempts: u8,
+    pub phase: ProcessPhase,
+    pub exit_status: Option<ExitStatus>,
+    pub attempt: u8,
     pub channels: Option<ProcessChannels>,
     pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-impl ProcessInstance {
-    pub fn start(&mut self) {
-        self.status = ProcessStatus::Queued;
-        self.attempt = Some(0);
-        self.channels = Some(ProcessChannels::new(128));
-    }
-
-    pub fn restart(&mut self) {
-        self.status = ProcessStatus::Queued;
-        self.attempt = Some(0);
-        self.channels = Some(ProcessChannels::new(128));
-        self.started_at = None;
-        self.finished_at = None;
-    }
+    pub started_at: Option<DateTime<Utc>>,
+    pub finished_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Validate)]
@@ -118,35 +78,16 @@ pub struct ProcessRequest {
     #[validate(length(max = 500))]
     pub description: Option<String>,
     pub timeout_ms: Option<u64>,
-    pub priority: Option<Priority>,
-    pub retry_max_attempts: Option<u8>,
-    pub lint: bool,
-    pub save: bool,
-    pub run: bool,
-}
-
-#[derive(Debug, Clone, Deserialize, Validate)]
-pub struct ProcessUpdateRequest {
-    #[validate(length(min = 3, max = 64))]
-    pub name: Option<String>,
-    #[validate(length(max = 500))]
-    pub description: Option<String>,
-    pub code: Option<String>,
-    #[validate(length(min = 3, max = 64))]
-    pub environment: Option<String>,
-    pub env_config: Option<JsonValue>,
-    pub timeout_ms: Option<Option<u64>>,
-    pub priority: Option<Priority>,
-    pub retry_max_attempts: Option<Option<u8>>,
-    pub lint: Option<bool>,
-    pub save: Option<bool>,
+    pub priority: Option<u8>,
+    pub retry_max_attempts: u8,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ProcessResponse {
     pub pid: String,
     pub name: String,
-    pub status: ProcessStatus,
+    pub phase: ProcessPhase,
+    pub exit_status: Option<ExitStatus>,
 }
 
 #[derive(Debug, Clone, Deserialize, Validate)]
@@ -160,25 +101,23 @@ pub struct ForkOverrides {
     pub environment: Option<String>,
     pub env_config: Option<JsonValue>,
     pub timeout_ms: Option<Option<u64>>,
-    pub priority: Option<Priority>,
-    pub retry_max_attempts: Option<Option<u8>>,
+    pub priority: Option<u8>,
+    pub retry_max_attempts: Option<u8>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(tag = "signal", content = "payload", rename_all = "SCREAMING_SNAKE_CASE")]
+#[serde(
+    tag = "signal",
+    content = "payload",
+    rename_all = "SCREAMING_SNAKE_CASE"
+)]
 pub enum Signal {
     Fork(Option<ForkOverrides>),
-    Start,
+    Run,
+    Lint,
+    Save,
     Kill,
     Evict,
-    Restart,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct SignalResponse {
-    pub pid: String,
-    pub forked_pid: Option<String>,
-    pub status: ProcessStatus,
 }
 
 #[cfg(test)]

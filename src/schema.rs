@@ -49,12 +49,11 @@ diesel::table! {
         pid -> Uuid,
         name -> Text,
         description -> Text,
-        code_hash -> Text,
         environment -> Text,
         env_config -> Jsonb,
         priority -> Int2,
         timeout_ms -> Nullable<Int8>,
-        retry_max_attempts -> Nullable<Int2>,
+        retry_max_attempts -> Int2,
         created_at -> Timestamptz,
         updated_at -> Timestamptz,
     }

@@ -1,216 +1,378 @@
 use super::*;
-use bytes::Bytes;
-use chrono::{TimeZone, Utc};
 use serde_json::json;
 use validator::Validate;
 
+#[test]
+fn process_phase_serializes_idle_as_screaming_snake_case() {
+    assert_eq!(
+        serde_json::to_string(&ProcessPhase::Idle).unwrap(),
+        "\"IDLE\""
+    );
+}
+
+#[test]
+fn process_phase_serializes_queued_as_screaming_snake_case() {
+    assert_eq!(
+        serde_json::to_string(&ProcessPhase::Queued).unwrap(),
+        "\"QUEUED\""
+    );
+}
+
+#[test]
+fn process_phase_serializes_running_as_screaming_snake_case() {
+    assert_eq!(
+        serde_json::to_string(&ProcessPhase::Running).unwrap(),
+        "\"RUNNING\""
+    );
+}
+
+#[test]
+fn process_phase_deserializes_all_variants() {
+    assert_eq!(
+        serde_json::from_str::<ProcessPhase>("\"IDLE\"").unwrap(),
+        ProcessPhase::Idle
+    );
+    assert_eq!(
+        serde_json::from_str::<ProcessPhase>("\"QUEUED\"").unwrap(),
+        ProcessPhase::Queued
+    );
+    assert_eq!(
+        serde_json::from_str::<ProcessPhase>("\"RUNNING\"").unwrap(),
+        ProcessPhase::Running
+    );
+}
+
+#[test]
+fn process_phase_rejects_lowercase_variant() {
+    assert!(serde_json::from_str::<ProcessPhase>("\"idle\"").is_err());
+    assert!(serde_json::from_str::<ProcessPhase>("\"running\"").is_err());
+}
+
+#[test]
+fn process_phase_rejects_unknown_variant() {
+    assert!(serde_json::from_str::<ProcessPhase>("\"PENDING\"").is_err());
+}
+
+#[test]
+fn process_phase_clone_and_equality() {
+    let p1 = ProcessPhase::Queued;
+    let p2 = p1.clone();
+    assert_eq!(p1, p2);
+    assert_ne!(ProcessPhase::Idle, ProcessPhase::Running);
+    assert_ne!(ProcessPhase::Running, ProcessPhase::Queued);
+}
+
+#[test]
+fn process_phase_debug_format() {
+    assert!(format!("{:?}", ProcessPhase::Idle).contains("Idle"));
+    assert!(format!("{:?}", ProcessPhase::Running).contains("Running"));
+}
+
+#[test]
+fn exit_status_serializes_success_as_screaming_snake_case() {
+    assert_eq!(
+        serde_json::to_string(&ExitStatus::Success).unwrap(),
+        "\"SUCCESS\""
+    );
+}
+
+#[test]
+fn exit_status_serializes_failed_as_screaming_snake_case() {
+    assert_eq!(
+        serde_json::to_string(&ExitStatus::Failed).unwrap(),
+        "\"FAILED\""
+    );
+}
+
+#[test]
+fn exit_status_deserializes_all_variants() {
+    assert_eq!(
+        serde_json::from_str::<ExitStatus>("\"SUCCESS\"").unwrap(),
+        ExitStatus::Success
+    );
+    assert_eq!(
+        serde_json::from_str::<ExitStatus>("\"FAILED\"").unwrap(),
+        ExitStatus::Failed
+    );
+}
+
+#[test]
+fn exit_status_rejects_lowercase_variant() {
+    assert!(serde_json::from_str::<ExitStatus>("\"success\"").is_err());
+    assert!(serde_json::from_str::<ExitStatus>("\"failed\"").is_err());
+}
+
+#[test]
+fn exit_status_clone_and_equality() {
+    let e1 = ExitStatus::Success;
+    let e2 = e1.clone();
+    assert_eq!(e1, e2);
+    assert_ne!(ExitStatus::Success, ExitStatus::Failed);
+}
+
+#[test]
+fn exit_status_debug_format() {
+    assert!(format!("{:?}", ExitStatus::Failed).contains("Failed"));
+}
+
+#[test]
+fn output_chunk_clone_preserves_bytes() {
+    let chunk = OutputChunk(bytes::Bytes::from("hello world"));
+    let cloned = chunk.clone();
+    assert_eq!(chunk.0, cloned.0);
+}
+
+#[test]
+fn output_chunk_clone_empty_bytes() {
+    let chunk = OutputChunk(bytes::Bytes::new());
+    assert_eq!(chunk.clone().0.len(), 0);
+}
+
+#[test]
+fn output_chunk_debug_format() {
+    let s = format!("{:?}", OutputChunk(bytes::Bytes::from("test")));
+    assert!(s.contains("OutputChunk"));
+}
+
+#[test]
+fn process_channels_new_output_is_none() {
+    let channels = ProcessChannels::new(16);
+    assert!(channels.output.is_none());
+}
+
+#[test]
+fn process_channels_subscribe_stdout_returns_receiver() {
+    let channels = ProcessChannels::new(16);
+    let _rx = channels.subscribe_stdout();
+}
+
+#[test]
+fn process_channels_subscribe_stderr_returns_receiver() {
+    let channels = ProcessChannels::new(16);
+    let _rx = channels.subscribe_stderr();
+}
+
+#[test]
+fn process_channels_stdout_send_and_receive() {
+    let channels = ProcessChannels::new(16);
+    let mut rx = channels.subscribe_stdout();
+    let chunk = OutputChunk(bytes::Bytes::from("stdout data"));
+    channels.stdout.send(chunk).unwrap();
+    let received = rx.try_recv().unwrap();
+    assert_eq!(received.0, bytes::Bytes::from("stdout data"));
+}
+
+#[test]
+fn process_channels_stderr_send_and_receive() {
+    let channels = ProcessChannels::new(16);
+    let mut rx = channels.subscribe_stderr();
+    let chunk = OutputChunk(bytes::Bytes::from("stderr data"));
+    channels.stderr.send(chunk).unwrap();
+    let received = rx.try_recv().unwrap();
+    assert_eq!(received.0, bytes::Bytes::from("stderr data"));
+}
+
+#[test]
+fn process_channels_multiple_subscribers_each_receive() {
+    let channels = ProcessChannels::new(16);
+    let mut rx1 = channels.subscribe_stdout();
+    let mut rx2 = channels.subscribe_stdout();
+    channels
+        .stdout
+        .send(OutputChunk(bytes::Bytes::from("broadcast")))
+        .unwrap();
+    assert_eq!(rx1.try_recv().unwrap().0, bytes::Bytes::from("broadcast"));
+    assert_eq!(rx2.try_recv().unwrap().0, bytes::Bytes::from("broadcast"));
+}
+
+#[test]
+fn process_channels_debug_format() {
+    let s = format!("{:?}", ProcessChannels::new(8));
+    assert!(s.contains("ProcessChannels"));
+}
+
 fn valid_process_request() -> ProcessRequest {
     ProcessRequest {
-        code: "fn main() {}".to_string(),
-        environment: "python".to_string(),
-        env_config: Some(json!({"version": "3.12"})),
-        name: Some("example-process".to_string()),
-        description: Some("Runs a sample process".to_string()),
-        timeout_ms: Some(5_000),
-        priority: Some(128),
-        retry_max_attempts: Some(3),
-        lint: true,
-        save: true,
-        run: false,
+        code: "print('hello')".to_string(),
+        environment: "python3.12".to_string(),
+        env_config: None,
+        name: Some("my-process".to_string()),
+        description: None,
+        timeout_ms: None,
+        priority: None,
+        retry_max_attempts: 3,
     }
 }
 
-fn valid_process_update_request() -> ProcessUpdateRequest {
-    ProcessUpdateRequest {
-        name: Some("updated-process".to_string()),
-        description: Some("Updated description".to_string()),
-        code: Some("print('updated')".to_string()),
-        environment: Some("python".to_string()),
-        env_config: Some(json!({"version": "3.13"})),
-        timeout_ms: Some(Some(10_000)),
+#[test]
+fn process_request_valid_passes_validation() {
+    assert!(valid_process_request().validate().is_ok());
+}
+
+#[test]
+fn process_request_environment_too_short_rejected() {
+    let req = ProcessRequest {
+        environment: "ab".to_string(),
+        ..valid_process_request()
+    };
+    assert!(req.validate().is_err());
+}
+
+#[test]
+fn process_request_environment_too_long_rejected() {
+    let req = ProcessRequest {
+        environment: "a".repeat(65),
+        ..valid_process_request()
+    };
+    assert!(req.validate().is_err());
+}
+
+#[test]
+fn process_request_environment_at_boundaries_passes() {
+    let req_min = ProcessRequest {
+        environment: "abc".to_string(),
+        ..valid_process_request()
+    };
+    assert!(req_min.validate().is_ok());
+
+    let req_max = ProcessRequest {
+        environment: "a".repeat(64),
+        ..valid_process_request()
+    };
+    assert!(req_max.validate().is_ok());
+}
+
+#[test]
+fn process_request_name_too_short_rejected() {
+    let req = ProcessRequest {
+        name: Some("ab".to_string()),
+        ..valid_process_request()
+    };
+    assert!(req.validate().is_err());
+}
+
+#[test]
+fn process_request_name_too_long_rejected() {
+    let req = ProcessRequest {
+        name: Some("a".repeat(65)),
+        ..valid_process_request()
+    };
+    assert!(req.validate().is_err());
+}
+
+#[test]
+fn process_request_name_none_passes_validation() {
+    let req = ProcessRequest {
+        name: None,
+        ..valid_process_request()
+    };
+    assert!(req.validate().is_ok());
+}
+
+#[test]
+fn process_request_description_too_long_rejected() {
+    let req = ProcessRequest {
+        description: Some("a".repeat(501)),
+        ..valid_process_request()
+    };
+    assert!(req.validate().is_err());
+}
+
+#[test]
+fn process_request_description_at_max_length_passes() {
+    let req = ProcessRequest {
+        description: Some("a".repeat(500)),
+        ..valid_process_request()
+    };
+    assert!(req.validate().is_ok());
+}
+
+#[test]
+fn process_request_with_env_config_passes_validation() {
+    let req = ProcessRequest {
+        env_config: Some(json!({"key": "value", "count": 42})),
+        ..valid_process_request()
+    };
+    assert!(req.validate().is_ok());
+}
+
+#[test]
+fn process_request_with_timeout_and_priority_passes() {
+    let req = ProcessRequest {
+        timeout_ms: Some(30_000),
         priority: Some(64),
-        retry_max_attempts: Some(Some(4)),
-        lint: Some(false),
-        save: Some(true),
-    }
+        ..valid_process_request()
+    };
+    assert!(req.validate().is_ok());
+}
+
+#[test]
+fn process_response_serializes_all_fields() {
+    let resp = ProcessResponse {
+        pid: "abc-123".to_string(),
+        name: "my-proc".to_string(),
+        phase: ProcessPhase::Running,
+        exit_status: None,
+    };
+    let v = serde_json::to_value(&resp).unwrap();
+    assert_eq!(v["pid"], "abc-123");
+    assert_eq!(v["name"], "my-proc");
+    assert_eq!(v["phase"], "RUNNING");
+    assert!(v["exit_status"].is_null());
+}
+
+#[test]
+fn process_response_serializes_exit_status_when_present() {
+    let resp = ProcessResponse {
+        pid: "x".to_string(),
+        name: "done".to_string(),
+        phase: ProcessPhase::Idle,
+        exit_status: Some(ExitStatus::Failed),
+    };
+    let v = serde_json::to_value(&resp).unwrap();
+    assert_eq!(v["exit_status"], "FAILED");
+}
+
+#[test]
+fn process_response_clone_preserves_fields() {
+    let resp = ProcessResponse {
+        pid: "p1".to_string(),
+        name: "n1".to_string(),
+        phase: ProcessPhase::Queued,
+        exit_status: Some(ExitStatus::Success),
+    };
+    let cloned = resp.clone();
+    assert_eq!(resp.pid, cloned.pid);
+    assert_eq!(resp.phase, cloned.phase);
+    assert_eq!(resp.exit_status, cloned.exit_status);
+}
+
+#[test]
+fn process_response_debug_format() {
+    let resp = ProcessResponse {
+        pid: "p".to_string(),
+        name: "n".to_string(),
+        phase: ProcessPhase::Idle,
+        exit_status: None,
+    };
+    assert!(format!("{:?}", resp).contains("ProcessResponse"));
 }
 
 fn valid_fork_overrides() -> ForkOverrides {
     ForkOverrides {
         name: Some("forked-process".to_string()),
-        description: Some("Forked description".to_string()),
-        code: Some("print('forked')".to_string()),
-        environment: Some("python".to_string()),
-        env_config: Some(json!({"version": "3.11"})),
-        timeout_ms: Some(Some(2_500)),
-        priority: Some(32),
-        retry_max_attempts: Some(Some(2)),
-    }
-}
-
-fn sample_process_instance() -> ProcessInstance {
-    ProcessInstance {
-        pid: Uuid::nil(),
-        name: "demo".to_string(),
-        description: "demo process".to_string(),
-        code_hash: "sha256:abc123".to_string(),
-        environment: "python".to_string(),
-        env_config: json!({"version": "3.12"}),
-        priority: 42,
-        timeout_ms: Some(3_000),
-        retry_max_attempts: Some(2),
-        status: ProcessStatus::Idle,
-        attempt: None,
-        started_at: Some(Utc.with_ymd_and_hms(2026, 3, 6, 1, 2, 3).unwrap()),
-        finished_at: Some(Utc.with_ymd_and_hms(2026, 3, 6, 1, 5, 3).unwrap()),
-        channels: None,
-        created_at: Utc.with_ymd_and_hms(2026, 3, 6, 1, 0, 0).unwrap(),
-        updated_at: Utc.with_ymd_and_hms(2026, 3, 6, 1, 1, 0).unwrap(),
-    }
-}
-
-#[test]
-fn process_status_helpers_match_expected_state_machine() {
-    let cases = [
-        (ProcessStatus::Idle, false, false, false, true, true),
-        (ProcessStatus::Queued, false, true, false, false, false),
-        (ProcessStatus::Running, false, true, false, false, false),
-        (ProcessStatus::Retrying, false, true, false, false, false),
-        (ProcessStatus::Success, true, false, true, false, true),
-        (ProcessStatus::Failed, true, false, true, false, true),
-        (ProcessStatus::TimedOut, true, false, true, false, true),
-        (ProcessStatus::Cancelled, true, false, true, false, true),
-    ];
-
-    for (status, terminal, cancellable, restartable, updatable, evictable) in cases {
-        assert_eq!(status.is_terminal(), terminal, "unexpected terminal state for {status:?}");
-        assert_eq!(status.is_cancellable(), cancellable, "unexpected cancellable state for {status:?}");
-        assert_eq!(status.is_restartable(), restartable, "unexpected restartable state for {status:?}");
-        assert_eq!(status.is_updatable(), updatable, "unexpected updatable state for {status:?}");
-        assert_eq!(status.is_evictable(), evictable, "unexpected evictable state for {status:?}");
-    }
-}
-
-#[test]
-fn process_status_serializes_and_deserializes_as_screaming_snake_case() {
-    assert_eq!(serde_json::to_string(&ProcessStatus::TimedOut).unwrap(), "\"TIMED_OUT\"");
-    assert_eq!(
-        serde_json::from_str::<ProcessStatus>("\"CANCELLED\"").unwrap(),
-        ProcessStatus::Cancelled
-    );
-}
-
-#[test]
-fn process_channels_initializes_without_output() {
-    let channels = ProcessChannels::new(4);
-    assert!(channels.output.is_none());
-}
-
-#[test]
-fn process_channels_stdout_subscription_receives_sent_chunks() {
-    let channels = ProcessChannels::new(4);
-    let mut receiver = channels.subscribe_stdout();
-    let expected = Bytes::from_static(b"stdout line");
-
-    channels.stdout.send(OutputChunk(expected.clone())).unwrap();
-
-    let OutputChunk(actual) = receiver.try_recv().unwrap();
-    assert_eq!(actual, expected);
-}
-
-#[test]
-fn process_channels_stderr_subscription_receives_sent_chunks() {
-    let channels = ProcessChannels::new(4);
-    let mut receiver = channels.subscribe_stderr();
-    let expected = Bytes::from_static(b"stderr line");
-
-    channels.stderr.send(OutputChunk(expected.clone())).unwrap();
-
-    let OutputChunk(actual) = receiver.try_recv().unwrap();
-    assert_eq!(actual, expected);
-}
-
-#[test]
-fn process_instance_start_queues_process_and_creates_channels() {
-    let mut process = sample_process_instance();
-    process.status = ProcessStatus::Idle;
-    process.attempt = None;
-    process.channels = None;
-
-    process.start();
-
-    assert_eq!(process.status, ProcessStatus::Queued);
-    assert_eq!(process.attempt, Some(0));
-    assert!(process.channels.is_some());
-    assert!(process.started_at.is_some());
-    assert!(process.finished_at.is_some());
-}
-
-#[test]
-fn process_instance_restart_resets_runtime_state() {
-    let mut process = sample_process_instance();
-    process.status = ProcessStatus::Failed;
-    process.attempt = Some(3);
-    process.channels = Some(ProcessChannels::new(8));
-
-    process.restart();
-
-    assert_eq!(process.status, ProcessStatus::Queued);
-    assert_eq!(process.attempt, Some(0));
-    assert!(process.channels.is_some());
-    assert!(process.started_at.is_none());
-    assert!(process.finished_at.is_none());
-}
-
-#[test]
-fn process_request_valid_payload_passes_validation() {
-    assert!(valid_process_request().validate().is_ok());
-}
-
-#[test]
-fn process_request_environment_too_short_is_rejected() {
-    let request = ProcessRequest {
-        environment: "py".to_string(),
-        ..valid_process_request()
-    };
-
-    assert!(request.validate().is_err());
-}
-
-#[test]
-fn process_request_name_too_short_is_rejected() {
-    let request = ProcessRequest {
-        name: Some("ab".to_string()),
-        ..valid_process_request()
-    };
-
-    assert!(request.validate().is_err());
-}
-
-#[test]
-fn process_request_description_too_long_is_rejected() {
-    let request = ProcessRequest {
-        description: Some("a".repeat(501)),
-        ..valid_process_request()
-    };
-
-    assert!(request.validate().is_err());
-}
-
-#[test]
-fn process_request_allows_optional_name_and_description_to_be_absent() {
-    let request = ProcessRequest {
-        name: None,
         description: None,
-        ..valid_process_request()
-    };
-
-    assert!(request.validate().is_ok());
+        code: None,
+        environment: Some("python3.12".to_string()),
+        env_config: None,
+        timeout_ms: None,
+        priority: None,
+        retry_max_attempts: None,
+    }
 }
 
-#[test]
-fn process_update_request_allows_all_fields_to_be_absent() {
-    let request = ProcessUpdateRequest {
+fn empty_fork_overrides() -> ForkOverrides {
+    ForkOverrides {
         name: None,
         description: None,
         code: None,
@@ -219,187 +381,164 @@ fn process_update_request_allows_all_fields_to_be_absent() {
         timeout_ms: None,
         priority: None,
         retry_max_attempts: None,
-        lint: None,
-        save: None,
-    };
-
-    assert!(request.validate().is_ok());
+    }
 }
 
 #[test]
-fn process_update_request_valid_payload_passes_validation() {
-    assert!(valid_process_update_request().validate().is_ok());
+fn fork_overrides_all_none_passes_validation() {
+    assert!(empty_fork_overrides().validate().is_ok());
 }
 
 #[test]
-fn process_update_request_environment_too_short_is_rejected() {
-    let request = ProcessUpdateRequest {
-        environment: Some("js".to_string()),
-        ..valid_process_update_request()
-    };
-
-    assert!(request.validate().is_err());
-}
-
-#[test]
-fn process_update_request_name_too_short_is_rejected() {
-    let request = ProcessUpdateRequest {
-        name: Some("ab".to_string()),
-        ..valid_process_update_request()
-    };
-
-    assert!(request.validate().is_err());
-}
-
-#[test]
-fn process_update_request_description_too_long_is_rejected() {
-    let request = ProcessUpdateRequest {
-        description: Some("a".repeat(501)),
-        ..valid_process_update_request()
-    };
-
-    assert!(request.validate().is_err());
-}
-
-#[test]
-fn process_update_request_allows_clearing_optional_limits() {
-    let request = ProcessUpdateRequest {
-        timeout_ms: Some(None),
-        retry_max_attempts: Some(None),
-        ..valid_process_update_request()
-    };
-
-    assert!(request.validate().is_ok());
-}
-
-#[test]
-fn fork_overrides_valid_payload_passes_validation() {
+fn fork_overrides_valid_passes_validation() {
     assert!(valid_fork_overrides().validate().is_ok());
 }
 
 #[test]
-fn fork_overrides_allows_all_fields_to_be_absent() {
-    let overrides = ForkOverrides {
-        name: None,
-        description: None,
-        code: None,
-        environment: None,
-        env_config: None,
-        timeout_ms: None,
-        priority: None,
-        retry_max_attempts: None,
-    };
-
-    assert!(overrides.validate().is_ok());
-}
-
-#[test]
-fn fork_overrides_name_too_short_is_rejected() {
-    let overrides = ForkOverrides {
+fn fork_overrides_name_too_short_rejected() {
+    let o = ForkOverrides {
         name: Some("ab".to_string()),
-        ..valid_fork_overrides()
+        ..empty_fork_overrides()
     };
-
-    assert!(overrides.validate().is_err());
+    assert!(o.validate().is_err());
 }
 
 #[test]
-fn fork_overrides_environment_too_short_is_rejected() {
-    let overrides = ForkOverrides {
-        environment: Some("js".to_string()),
-        ..valid_fork_overrides()
+fn fork_overrides_name_too_long_rejected() {
+    let o = ForkOverrides {
+        name: Some("a".repeat(65)),
+        ..empty_fork_overrides()
     };
-
-    assert!(overrides.validate().is_err());
+    assert!(o.validate().is_err());
 }
 
 #[test]
-fn fork_overrides_description_too_long_is_rejected() {
-    let overrides = ForkOverrides {
+fn fork_overrides_description_too_long_rejected() {
+    let o = ForkOverrides {
         description: Some("a".repeat(501)),
-        ..valid_fork_overrides()
+        ..empty_fork_overrides()
     };
-
-    assert!(overrides.validate().is_err());
+    assert!(o.validate().is_err());
 }
 
 #[test]
-fn fork_overrides_allows_clearing_optional_limits() {
-    let overrides = ForkOverrides {
+fn fork_overrides_environment_too_short_rejected() {
+    let o = ForkOverrides {
+        environment: Some("ab".to_string()),
+        ..empty_fork_overrides()
+    };
+    assert!(o.validate().is_err());
+}
+
+#[test]
+fn fork_overrides_environment_too_long_rejected() {
+    let o = ForkOverrides {
+        environment: Some("a".repeat(65)),
+        ..empty_fork_overrides()
+    };
+    assert!(o.validate().is_err());
+}
+
+#[test]
+fn fork_overrides_timeout_ms_clear_with_none_inner() {
+    let o = ForkOverrides {
         timeout_ms: Some(None),
-        retry_max_attempts: Some(None),
-        ..valid_fork_overrides()
+        ..empty_fork_overrides()
     };
-
-    assert!(overrides.validate().is_ok());
+    assert!(o.validate().is_ok());
+    assert_eq!(o.timeout_ms, Some(None));
 }
 
 #[test]
-fn signal_deserializes_start_without_payload() {
-    let signal: Signal = serde_json::from_value(json!({"signal": "START"})).unwrap();
-    assert!(matches!(signal, Signal::Start));
+fn fork_overrides_timeout_ms_some_value() {
+    let o = ForkOverrides {
+        timeout_ms: Some(Some(5_000)),
+        ..empty_fork_overrides()
+    };
+    assert!(o.validate().is_ok());
+    assert_eq!(o.timeout_ms, Some(Some(5_000)));
 }
 
 #[test]
-fn signal_deserializes_kill_without_payload() {
-    let signal: Signal = serde_json::from_value(json!({"signal": "KILL"})).unwrap();
-    assert!(matches!(signal, Signal::Kill));
+fn signal_deserializes_run() {
+    let s: Signal = serde_json::from_value(json!({"signal": "RUN"})).unwrap();
+    assert!(matches!(s, Signal::Run));
 }
 
 #[test]
-fn signal_deserializes_evict_without_payload() {
-    let signal: Signal = serde_json::from_value(json!({"signal": "EVICT"})).unwrap();
-    assert!(matches!(signal, Signal::Evict));
+fn signal_deserializes_lint() {
+    let s: Signal = serde_json::from_value(json!({"signal": "LINT"})).unwrap();
+    assert!(matches!(s, Signal::Lint));
 }
 
 #[test]
-fn signal_deserializes_fork_with_payload() {
-    let signal: Signal = serde_json::from_value(json!({
+fn signal_deserializes_save() {
+    let s: Signal = serde_json::from_value(json!({"signal": "SAVE"})).unwrap();
+    assert!(matches!(s, Signal::Save));
+}
+
+#[test]
+fn signal_deserializes_kill() {
+    let s: Signal = serde_json::from_value(json!({"signal": "KILL"})).unwrap();
+    assert!(matches!(s, Signal::Kill));
+}
+
+#[test]
+fn signal_deserializes_evict() {
+    let s: Signal = serde_json::from_value(json!({"signal": "EVICT"})).unwrap();
+    assert!(matches!(s, Signal::Evict));
+}
+
+#[test]
+fn signal_deserializes_fork_with_null_payload() {
+    let s: Signal = serde_json::from_value(json!({"signal": "FORK", "payload": null})).unwrap();
+    assert!(matches!(s, Signal::Fork(None)));
+}
+
+#[test]
+fn signal_deserializes_fork_with_overrides() {
+    let s: Signal = serde_json::from_value(json!({
         "signal": "FORK",
         "payload": {
             "name": "forked-process",
-            "timeout_ms": null,
-            "retry_max_attempts":  null
+            "priority": 200u8
         }
     }))
     .unwrap();
-
-    match signal {
+    match s {
         Signal::Fork(Some(overrides)) => {
             assert_eq!(overrides.name, Some("forked-process".to_string()));
-            assert_eq!(overrides.timeout_ms, None);
-            assert_eq!(overrides.retry_max_attempts, None);
+            assert_eq!(overrides.priority, Some(200u8));
         }
-        other => panic!("expected fork signal, got {other:?}"),
+        _ => panic!("expected Fork(Some(_))"),
     }
 }
 
 #[test]
-fn signal_deserializes_fork_without_payload() {
-    let signal: Signal = serde_json::from_value(json!({
+fn signal_deserializes_fork_with_code_override() {
+    let s: Signal = serde_json::from_value(json!({
         "signal": "FORK",
-        "payload": null
+        "payload": {
+            "code": "print('forked')"
+        }
     }))
     .unwrap();
-
-    assert!(matches!(signal, Signal::Fork(None)));
+    match s {
+        Signal::Fork(Some(overrides)) => {
+            assert_eq!(overrides.code, Some("print('forked')".to_string()));
+        }
+        _ => panic!("expected Fork(Some(_))"),
+    }
 }
 
 #[test]
-fn process_and_signal_responses_hold_expected_fields() {
-    let process_response = ProcessResponse {
-        pid: Uuid::nil().to_string(),
-        name: "demo".to_string(),
-        status: ProcessStatus::Queued,
-    };
-    let signal_response = SignalResponse {
-        pid: Uuid::nil().to_string(),
-        forked_pid: Some(Uuid::new_v4().to_string()),
-        status: ProcessStatus::Success,
-    };
+fn signal_rejects_unknown_variant() {
+    let result: Result<Signal, _> = serde_json::from_value(json!({"signal": "UNKNOWN"}));
+    assert!(result.is_err());
+}
 
-    assert_eq!(process_response.name, "demo");
-    assert_eq!(process_response.status, ProcessStatus::Queued);
-    assert!(signal_response.forked_pid.is_some());
-    assert_eq!(signal_response.status, ProcessStatus::Success);
+#[test]
+fn signal_rejects_lowercase_variant() {
+    let result: Result<Signal, _> = serde_json::from_value(json!({"signal": "run"}));
+    assert!(result.is_err());
 }

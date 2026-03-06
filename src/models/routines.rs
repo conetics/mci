@@ -1,5 +1,4 @@
-use super::common::validate_digest;
-use crate::models::processes::{Priority, ProcessInstance, ProcessStatus};
+use crate::models::processes::{ProcessInstance, ProcessPhase};
 use crate::schema;
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
@@ -15,12 +14,11 @@ pub struct Routine {
     pub pid: Uuid,
     pub name: String,
     pub description: String,
-    pub code_hash: String,
     pub environment: String,
     pub env_config: JsonValue,
-    pub priority: Priority,
+    pub priority: i16,
     pub timeout_ms: Option<i64>,
-    pub retry_max_attempts: Option<i16>,
+    pub retry_max_attempts: i16,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -31,35 +29,33 @@ impl Routine {
             pid: self.pid,
             name: self.name,
             description: self.description,
-            code_hash: self.code_hash,
             environment: self.environment,
             env_config: self.env_config,
-            priority: self.priority,
+            priority: self.priority as u8,
             timeout_ms: self.timeout_ms.map(|v| v as u64),
-            retry_max_attempts: self.retry_max_attempts.map(|v| v as u8),
-            status: ProcessStatus::Idle,
-            attempt: None,
+            retry_max_attempts: self.retry_max_attempts as u8,
+            phase: ProcessPhase::Idle,
+            exit_status: None,
+            attempt: 0,
             started_at: None,
             finished_at: None,
             channels: None,
             created_at: self.created_at,
-            updated_at: self.updated_at,
         }
     }
 
-    pub fn from_process(process: ProcessInstance) -> Self {
+    pub fn from_process(process: &ProcessInstance) -> Self {
         Self {
             pid: process.pid,
-            name: process.name,
-            description: process.description,
-            code_hash: process.code_hash,
-            environment: process.environment,
-            env_config: process.env_config,
-            priority: process.priority,
+            name: process.name.clone(),
+            description: process.description.clone(),
+            environment: process.environment.clone(),
+            env_config: process.env_config.clone(),
+            priority: process.priority as i16,
             timeout_ms: process.timeout_ms.map(|v| v as i64),
-            retry_max_attempts: process.retry_max_attempts.map(|v| v as i16),
+            retry_max_attempts: process.retry_max_attempts as i16,
             created_at: process.created_at,
-            updated_at: process.updated_at,
+            updated_at: process.created_at,
         }
     }
 }
@@ -70,10 +66,9 @@ pub struct NewRoutine {
     pub pid: Uuid,
     pub name: String,
     pub description: String,
-    pub code_hash: String,
     pub environment: String,
     pub env_config: JsonValue,
-    pub priority: Priority,
+    pub priority: i16,
     pub timeout_ms: Option<i64>,
     pub retry_max_attempts: Option<i16>,
 }
@@ -83,12 +78,11 @@ pub struct NewRoutine {
 pub struct RoutineChangeset {
     pub name: Option<String>,
     pub description: Option<String>,
-    pub code_hash: Option<String>,
     pub environment: Option<String>,
     pub env_config: Option<JsonValue>,
-    pub priority: Option<Priority>,
+    pub priority: Option<i16>,
     pub timeout_ms: Option<Option<i64>>,
-    pub retry_max_attempts: Option<Option<i16>>,
+    pub retry_max_attempts: Option<i16>,
 }
 
 #[derive(Debug, Clone, Deserialize, Validate)]
@@ -98,14 +92,10 @@ pub struct NewRoutineRequest {
     pub name: String,
     #[validate(length(max = 500))]
     pub description: Option<String>,
-    #[validate(custom(function = "validate_digest"))]
-    pub code_hash: String,
     #[validate(length(min = 3, max = 64))]
     pub environment: String,
     pub env_config: Option<JsonValue>,
-    #[validate(range(min = 0, max = 255))]
-    pub priority: Option<Priority>,
-    #[validate(range(min = 1))]
+    pub priority: Option<u8>,
     pub timeout_ms: Option<u64>,
     #[validate(range(min = 1))]
     pub retry_max_attempts: Option<u8>,
@@ -117,12 +107,11 @@ impl NewRoutineRequest {
             pid,
             name: self.name,
             description: self.description.unwrap_or_default(),
-            code_hash: self.code_hash,
             environment: self.environment,
             env_config: self
                 .env_config
                 .unwrap_or_else(|| JsonValue::Object(Default::default())),
-            priority: self.priority.unwrap_or(128),
+            priority: self.priority.unwrap_or(128) as i16,
             timeout_ms: self.timeout_ms.map(|v| v as i64),
             retry_max_attempts: self.retry_max_attempts.map(|v| v as i16),
         }
@@ -136,15 +125,12 @@ pub struct UpdateRoutineRequest {
     pub name: Option<String>,
     #[validate(length(max = 500))]
     pub description: Option<String>,
-    #[validate(custom(function = "validate_digest"))]
-    pub code_hash: Option<String>,
     #[validate(length(min = 3, max = 64))]
     pub environment: Option<String>,
     pub env_config: Option<JsonValue>,
-    #[validate(range(min = 0, max = 255))]
-    pub priority: Option<Priority>,
+    pub priority: Option<u8>,
     pub timeout_ms: Option<Option<u64>>,
-    pub retry_max_attempts: Option<Option<u8>>,
+    pub retry_max_attempts: Option<u8>,
 }
 
 impl UpdateRoutineRequest {
@@ -152,12 +138,11 @@ impl UpdateRoutineRequest {
         RoutineChangeset {
             name: self.name,
             description: self.description,
-            code_hash: self.code_hash,
             environment: self.environment,
             env_config: self.env_config,
-            priority: self.priority,
+            priority: self.priority.map(|v| v as i16),
             timeout_ms: self.timeout_ms.map(|opt| opt.map(|v| v as i64)),
-            retry_max_attempts: self.retry_max_attempts.map(|opt| opt.map(|v| v as i16)),
+            retry_max_attempts: self.retry_max_attempts.map(|v| v as i16),
         }
     }
 }
