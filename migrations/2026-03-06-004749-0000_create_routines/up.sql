@@ -1,5 +1,7 @@
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE TABLE routines (
-    pid                 UUID            PRIMARY KEY,
+    pid                 UUID            PRIMARY KEY DEFAULT gen_random_uuid(),
     name                TEXT            NOT NULL,
     description         TEXT            NOT NULL DEFAULT '',
     code_hash           TEXT            NOT NULL,
@@ -11,6 +13,10 @@ CREATE TABLE routines (
     created_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW()
 );
+
+CREATE TRIGGER trg_routines_updated_at
+    BEFORE UPDATE ON routines
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE INDEX idx_routines_name ON routines (name);
 CREATE INDEX idx_routines_description ON routines USING GIN (to_tsvector('english', description));
