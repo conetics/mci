@@ -4,6 +4,7 @@ use crate::utils::regex;
 use diesel::deserialize;
 use diesel::pg;
 use diesel::serialize;
+use chrono::{DateTime, Utc};
 use diesel::{AsChangeset, AsExpression, FromSqlRow, Insertable, Queryable, Selectable};
 use serde::{Deserialize, Serialize};
 use std::io::Write;
@@ -58,6 +59,8 @@ pub struct Module {
     pub description: String,
     pub digest: String,
     pub source_url: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Insertable, Deserialize, Validate)]
