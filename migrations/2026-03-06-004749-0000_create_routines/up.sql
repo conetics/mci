@@ -7,7 +7,7 @@ CREATE TABLE routines (
     env_config          JSONB           NOT NULL DEFAULT '{}',
     priority            SMALLINT        NOT NULL DEFAULT 128 CONSTRAINT priority_range CHECK (priority BETWEEN 0 AND 255),
     timeout_ms          BIGINT          CONSTRAINT timeout_positive CHECK (timeout_ms > 0),
-    retry_max_attempts  SMALLINT        CONSTRAINT retry_min_attempts CHECK (retry_max_attempts > 1),
+    retry_max_attempts  SMALLINT        CONSTRAINT retry_max_attempts_positive CHECK (retry_max_attempts >= 1),
     created_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW()
 );
