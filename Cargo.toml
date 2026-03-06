@@ -18,7 +18,7 @@ serde_json = "1.0"
 diesel = { version = "2.3", features = ["postgres", "r2d2"] }
 diesel_migrations = "2.2"
 deadpool-diesel = "0.6"
-aws-sdk-s3 = { version = "1.124", features = ["behavior-version-latest"] }
+aws-sdk-s3 = { version = "1.125", features = ["behavior-version-latest"] }
 aws-config = { version = "1.8", features = ["behavior-version-latest"] }
 aws-smithy-types = "1.4"
 tracing = "0.1"
