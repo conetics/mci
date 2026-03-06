@@ -13,7 +13,7 @@ CREATE TABLE routines (
 );
 
 CREATE INDEX idx_routines_name ON routines (name);
-CREATE INDEX idx_routines_description ON routines (description);
+CREATE INDEX idx_routines_description ON routines USING GIN (to_tsvector('english', description));
 CREATE INDEX idx_routines_environment ON routines (environment);
 CREATE INDEX idx_routines_priority ON routines (priority ASC);
 CREATE INDEX idx_routines_created_at ON routines (created_at ASC);
