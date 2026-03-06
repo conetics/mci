@@ -1,6 +1,7 @@
 use super::common::validate_digest;
 use crate::schema;
 use crate::utils::regex;
+use chrono::{DateTime, Utc};
 use diesel::deserialize;
 use diesel::pg;
 use diesel::serialize;
@@ -58,6 +59,8 @@ pub struct Module {
     pub description: String,
     pub digest: String,
     pub source_url: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Insertable, Deserialize, Validate)]

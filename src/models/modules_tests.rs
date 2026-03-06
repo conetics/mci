@@ -286,6 +286,8 @@ fn module_has_all_required_fields() {
         description: "Test Description".into(),
         digest: "sha256:abc123".into(),
         source_url: Some("https://example.com".into()),
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
     };
     assert_eq!(module.id, "test-module");
     assert_eq!(module.type_, ModuleType::Sandbox);

@@ -1,2 +1,8 @@
-DROP TABLE modules;
-DROP TYPE module_type;
+DROP INDEX IF EXISTS idx_modules_description;
+DROP INDEX IF EXISTS idx_modules_name;
+DROP INDEX IF EXISTS idx_modules_is_enabled;
+DROP INDEX IF EXISTS idx_modules_type;
+
+DROP TRIGGER IF EXISTS update_modules_updated_at ON modules;
+DROP TABLE IF EXISTS modules;
+DROP TYPE  IF EXISTS module_type;

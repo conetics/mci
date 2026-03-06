@@ -16,10 +16,11 @@ diesel::table! {
         is_enabled -> Bool,
         #[max_length = 64]
         name -> Varchar,
-        #[max_length = 500]
-        description -> Varchar,
+        description -> Text,
         digest -> Text,
         source_url -> Nullable<Text>,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
     }
 }
 
@@ -35,11 +36,28 @@ diesel::table! {
         is_enabled -> Bool,
         #[max_length = 64]
         name -> Varchar,
-        #[max_length = 500]
-        description -> Varchar,
+        description -> Text,
         digest -> Text,
         source_url -> Nullable<Text>,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
     }
 }
 
-diesel::allow_tables_to_appear_in_same_query!(definitions, modules,);
+diesel::table! {
+    routines (pid) {
+        pid -> Uuid,
+        name -> Text,
+        description -> Text,
+        code_hash -> Text,
+        environment -> Text,
+        env_config -> Jsonb,
+        priority -> Int2,
+        timeout_ms -> Nullable<Int8>,
+        retry_max_attempts -> Nullable<Int2>,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::allow_tables_to_appear_in_same_query!(definitions, modules, routines,);

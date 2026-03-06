@@ -87,6 +87,7 @@ async fn create_definition_from_http_source() -> Result<()> {
             let mut conn = pool.get()?;
             definitions
                 .find("def-1")
+                .select(Definition::as_select())
                 .first(&mut conn)
                 .map_err(Into::into)
         }
@@ -272,6 +273,7 @@ async fn create_definition_from_registry_sets_source_url() -> Result<()> {
             let mut conn = pool.get()?;
             definitions
                 .find("def-3")
+                .select(Definition::as_select())
                 .first(&mut conn)
                 .map_err(Into::into)
         }
@@ -372,6 +374,7 @@ async fn update_definition_from_source_updates_when_digest_changes() -> Result<(
             let mut conn = pool.get()?;
             definitions
                 .find("def-4")
+                .select(Definition::as_select())
                 .first(&mut conn)
                 .map_err(Into::into)
         }
@@ -443,6 +446,7 @@ async fn update_definition_via_request_strips_digest() -> Result<()> {
             let mut conn = pool.get()?;
             definitions
                 .find("def-update-digest")
+                .select(Definition::as_select())
                 .first(&mut conn)
                 .map_err(Into::into)
         }

@@ -284,6 +284,8 @@ fn definition_has_all_required_fields() {
         description: "Test Description".into(),
         digest: "sha256:abc123".into(),
         source_url: Some("https://example.com".into()),
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
     };
     assert_eq!(def.id, "test-id");
     assert_eq!(def.type_, "test-type");
