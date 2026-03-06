@@ -1,5 +1,4 @@
 use chrono::{DateTime, Utc};
-use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use tokio::sync::broadcast;
@@ -39,7 +38,7 @@ impl ProcessStatus {
         matches!(self, Self::Idle)
     }
 
-    pub fn is_deletable(&self) -> bool {
+    pub fn is_evictable(&self) -> bool {
         matches!(self, Self::Idle) || self.is_terminal()
     }
 }
@@ -108,73 +107,6 @@ impl ProcessInstance {
     }
 }
 
-#[derive(Debug, Clone, Queryable, Selectable, Serialize)]
-#[diesel(table_name = crate::schema::routines)]
-#[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct Routine {
-    pub pid: Uuid,
-    pub name: String,
-    pub description: String,
-    pub code_hash: String,
-    pub environment: String,
-    pub env_config: JsonValue,
-    pub priority: Priority,
-    pub timeout_ms: Option<i64>,
-    pub retry_max_attempts: Option<i16>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-impl Routine {
-    pub fn into_process(self) -> ProcessInstance {
-        ProcessInstance {
-            pid: self.pid,
-            name: self.name,
-            description: self.description,
-            code_hash: self.code_hash,
-            environment: self.environment,
-            env_config: self.env_config,
-            priority: self.priority,
-            timeout_ms: self.timeout_ms.map(|v| v as u64),
-            retry_max_attempts: self.retry_max_attempts.map(|v| v as u8),
-            status: ProcessStatus::Idle,
-            attempt: None,
-            started_at: None,
-            finished_at: None,
-            channels: None,
-            created_at: self.created_at,
-            updated_at: self.updated_at,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Insertable)]
-#[diesel(table_name = crate::schema::routines)]
-pub struct NewRoutine {
-    pub pid: Uuid,
-    pub name: String,
-    pub description: String,
-    pub code_hash: String,
-    pub environment: String,
-    pub env_config: JsonValue,
-    pub priority: Priority,
-    pub timeout_ms: Option<i64>,
-    pub retry_max_attempts: Option<i16>,
-}
-
-#[derive(Debug, Clone, AsChangeset)]
-#[diesel(table_name = crate::schema::routines)]
-pub struct RoutineChangeset {
-    pub name: Option<String>,
-    pub description: Option<String>,
-    pub code_hash: Option<String>,
-    pub environment: Option<String>,
-    pub env_config: Option<JsonValue>,
-    pub priority: Option<Priority>,
-    pub timeout_ms: Option<Option<i64>>,
-    pub retry_max_attempts: Option<Option<i16>>,
-}
-
 #[derive(Debug, Clone, Deserialize, Validate)]
 pub struct ProcessRequest {
     pub code: String,
@@ -237,7 +169,8 @@ pub struct ForkOverrides {
 pub enum Signal {
     Fork(Option<ForkOverrides>),
     Start,
-    Cancel,
+    Kill,
+    Evict,
     Restart,
 }
 

@@ -82,12 +82,12 @@ fn process_status_helpers_match_expected_state_machine() {
         (ProcessStatus::Cancelled, true, false, true, false, true),
     ];
 
-    for (status, terminal, cancellable, restartable, updatable, deletable) in cases {
+    for (status, terminal, cancellable, restartable, updatable, evictable) in cases {
         assert_eq!(status.is_terminal(), terminal, "unexpected terminal state for {status:?}");
         assert_eq!(status.is_cancellable(), cancellable, "unexpected cancellable state for {status:?}");
         assert_eq!(status.is_restartable(), restartable, "unexpected restartable state for {status:?}");
         assert_eq!(status.is_updatable(), updatable, "unexpected updatable state for {status:?}");
-        assert_eq!(status.is_deletable(), deletable, "unexpected deletable state for {status:?}");
+        assert_eq!(status.is_evictable(), evictable, "unexpected evictable state for {status:?}");
     }
 }
 
@@ -160,67 +160,6 @@ fn process_instance_restart_resets_runtime_state() {
     assert!(process.channels.is_some());
     assert!(process.started_at.is_none());
     assert!(process.finished_at.is_none());
-}
-
-#[test]
-fn routine_into_process_maps_fields_and_initial_runtime_state() {
-    let created_at = Utc.with_ymd_and_hms(2026, 3, 6, 2, 0, 0).unwrap();
-    let updated_at = Utc.with_ymd_and_hms(2026, 3, 6, 2, 1, 0).unwrap();
-    let routine = Routine {
-        pid: Uuid::new_v4(),
-        name: "routine-name".to_string(),
-        description: "routine-description".to_string(),
-        code_hash: "sha256:def456".to_string(),
-        environment: "python".to_string(),
-        env_config: json!({"entrypoint": "main.py"}),
-        priority: 7,
-        timeout_ms: Some(9_999),
-        retry_max_attempts: Some(5),
-        created_at,
-        updated_at,
-    };
-
-    let pid = routine.pid;
-    let process = routine.into_process();
-
-    assert_eq!(process.pid, pid);
-    assert_eq!(process.name, "routine-name");
-    assert_eq!(process.description, "routine-description");
-    assert_eq!(process.code_hash, "sha256:def456");
-    assert_eq!(process.environment, "python");
-    assert_eq!(process.env_config, json!({"entrypoint": "main.py"}));
-    assert_eq!(process.priority, 7);
-    assert_eq!(process.timeout_ms, Some(9_999));
-    assert_eq!(process.retry_max_attempts, Some(5));
-    assert_eq!(process.status, ProcessStatus::Idle);
-    assert_eq!(process.attempt, None);
-    assert!(process.started_at.is_none());
-    assert!(process.finished_at.is_none());
-    assert!(process.channels.is_none());
-    assert_eq!(process.created_at, created_at);
-    assert_eq!(process.updated_at, updated_at);
-}
-
-#[test]
-fn routine_into_process_preserves_absent_optional_limits() {
-    let routine = Routine {
-        pid: Uuid::new_v4(),
-        name: "routine-name".to_string(),
-        description: "routine-description".to_string(),
-        code_hash: "sha256:def456".to_string(),
-        environment: "python".to_string(),
-        env_config: json!({}),
-        priority: 0,
-        timeout_ms: None,
-        retry_max_attempts: None,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-    };
-
-    let process = routine.into_process();
-
-    assert_eq!(process.timeout_ms, None);
-    assert_eq!(process.retry_max_attempts, None);
 }
 
 #[test]
@@ -399,6 +338,18 @@ fn fork_overrides_allows_clearing_optional_limits() {
 fn signal_deserializes_start_without_payload() {
     let signal: Signal = serde_json::from_value(json!({"signal": "START"})).unwrap();
     assert!(matches!(signal, Signal::Start));
+}
+
+#[test]
+fn signal_deserializes_kill_without_payload() {
+    let signal: Signal = serde_json::from_value(json!({"signal": "KILL"})).unwrap();
+    assert!(matches!(signal, Signal::Kill));
+}
+
+#[test]
+fn signal_deserializes_evict_without_payload() {
+    let signal: Signal = serde_json::from_value(json!({"signal": "EVICT"})).unwrap();
+    assert!(matches!(signal, Signal::Evict));
 }
 
 #[test]
